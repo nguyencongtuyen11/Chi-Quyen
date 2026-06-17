@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="description" content="Trung tâm Nghệ thuật OPENMUSIC — Thời khóa biểu, điểm danh, tính lương giáo viên và học phí học sinh." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="OPENMUSIC — Quản lý Trung tâm" />
+  <meta property="og:description" content="Thời khóa biểu • Điểm danh • Tính lương • Học phí" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <title>OPENMUSIC — Quản lý Trung tâm</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===================== APP SHELL ===================== -->
+  <div id="app" class="layout hidden">
+
+    <!-- Lớp phủ tối khi mở menu trên mobile -->
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- ===== SIDEBAR / MENU ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="side-brand">
+        <div class="logo" id="logoBox"></div>
+        <div class="side-title">
+          <h1>OPEN<span>MUSIC</span></h1>
+          <p>Trung tâm Nghệ thuật</p>
+        </div>
+      </div>
+
+      <nav class="menu" id="menu">
+        <button class="menu-item" data-view="today"><span class="mi-ic">📋</span> Hôm nay & Điểm danh</button>
+        <button class="menu-item" data-view="schedule"><span class="mi-ic">📅</span> Thời khóa biểu</button>
+        <button class="menu-item admin-only" data-view="students"><span class="mi-ic">🎓</span> Học sinh</button>
+        <button class="menu-item admin-only" data-view="teachers"><span class="mi-ic">👨‍🏫</span> Giáo viên</button>
+        <button class="menu-item admin-only" data-view="salary"><span class="mi-ic">💰</span> Tính lương</button>
+        <button class="menu-item admin-only" data-view="tuition"><span class="mi-ic">🧮</span> Học phí học sinh</button>
+        <button class="menu-item" data-view="notify"><span class="mi-ic">🔔</span> Thông báo <span class="badge-count" id="notifyBadge" hidden>0</span></button>
+        <button class="menu-item" data-view="settings"><span class="mi-ic">⚙️</span> Cài đặt</button>
+      </nav>
+
+      <div class="side-foot">
+        <div class="mode-pill" id="modePill"></div>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN ===== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="menuBtn" aria-label="Mở menu" title="Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <h2 class="page-title" id="pageTitle">Hôm nay</h2>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="themeBtn" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện"></button>
+        <div class="account">
+          <div class="avatar" id="accAvatar">?</div>
+          <div class="who">
+            <div class="name" id="accName">—</div>
+            <div class="role" id="accRole"></div>
+          </div>
+        </div>
+        <button class="icon-btn" id="logoutBtn" title="Đăng xuất" aria-label="Đăng xuất">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        </button>
+      </header>
+
+      <!-- Nhắc lịch hôm nay (hiện ở mọi trang) -->
+      <div class="reminder-bar hidden" id="reminderBar"></div>
+
+      <div class="content">
+
+        <!-- ============ VIEW: HÔM NAY & ĐIỂM DANH ============ -->
+        <section class="view" id="view-today">
+          <div class="view-head">
+            <div>
+              <h3 id="todayTitle">Lớp học hôm nay</h3>
+              <p class="sub" id="todayDate">—</p>
+            </div>
+            <div class="stat-chips" id="todayStats"></div>
+          </div>
+          <div id="todayList" class="today-list"></div>
+        </section>
+
+        <!-- ============ VIEW: THỜI KHÓA BIỂU ============ -->
+        <section class="view" id="view-schedule" hidden>
+          <div class="toolbar">
+            <div class="spacer"></div>
+            <select id="teacherFilter" class="admin-only" title="Lọc theo giáo viên">
+              <option value="all">Tất cả giáo viên</option>
+            </select>
+            <button class="btn primary admin-only" id="addBtn">+ Thêm buổi học</button>
+          </div>
+          <div class="datenav">
+            <button class="btn" data-nav="month:-1">« Tháng trước</button>
+            <button class="btn" data-nav="week:-1">‹ Tuần trước</button>
+            <div class="nav-center">
+              <div class="curdate">
+                <div class="dmy" id="navRange">—</div>
+                <div class="dow" id="navMonth">—</div>
+              </div>
+            </div>
+            <button class="btn" data-nav="week:1">Tuần sau ›</button>
+            <button class="btn" data-nav="month:1">Tháng sau »</button>
+            <span class="spacer-grow"></span>
+            <div class="date-wrap">
+              <input type="text" id="datePicker" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" title="Tới tuần chứa ngày này" />
+              <button type="button" class="cal-btn" data-cal="datePicker" aria-label="Chọn ngày">📅</button>
+              <input type="date" id="datePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
+            </div>
+            <button class="btn" id="todayBtn">Tuần này</button>
+          </div>
+          <div class="tkb-wrap loading" id="tkbWrap">
+            <div id="loading" class="state">Đang tải…</div>
+            <div class="week-grid" id="weekGrid"></div>
+            <div class="week-list" id="weekList"></div>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: HỌC SINH ============ -->
+        <section class="view" id="view-students" hidden>
+          <div class="toolbar">
+            <input type="search" id="studentSearch" class="search" placeholder="🔍 Tìm học sinh…" />
+            <div class="spacer"></div>
+            <button class="btn primary" id="addStudentBtn">+ Thêm học sinh</button>
+          </div>
+          <div id="studentList" class="card-list"></div>
+        </section>
+
+        <!-- ============ VIEW: GIÁO VIÊN ============ -->
+        <section class="view" id="view-teachers" hidden>
+          <div class="toolbar">
+            <div class="spacer"></div>
+            <button class="btn primary" id="addTeacherBtn">+ Thêm giáo viên</button>
+          </div>
+          <p class="hint">Thêm giáo viên chỉ cần <b>tên</b>. Khi giáo viên đã đăng ký tài khoản, chọn email của họ ở ô “tài khoản” để gắn — lúc đó họ tự đăng nhập, xem lịch & điểm danh lớp của mình.</p>
+          <div id="teacherList" class="card-list"></div>
+        </section>
+
+        <!-- ============ VIEW: TÍNH LƯƠNG ============ -->
+        <section class="view" id="view-salary" hidden>
+          <div class="toolbar">
+            <label class="inline">Từ <input type="text" id="salFrom" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
+            <label class="inline">Đến <input type="text" id="salTo" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
+            <button class="btn" id="salMonthBtn">Tháng này</button>
+            <div class="spacer"></div>
+            <button class="btn primary" id="salRun">Tính lương</button>
+          </div>
+          <p class="hint">Lương = <b>số buổi đã dạy</b> (giáo viên được điểm danh “có dạy”) × <b>lương mỗi buổi</b>. Đặt lương mỗi buổi trong mục Giáo viên.</p>
+          <div id="salaryResult"></div>
+        </section>
+
+        <!-- ============ VIEW: HỌC PHÍ HỌC SINH ============ -->
+        <section class="view" id="view-tuition" hidden>
+          <div class="toolbar">
+            <input type="search" id="tuitionSearch" class="search" placeholder="🔍 Tìm học sinh…" />
+            <div class="spacer"></div>
+            <button class="btn" id="tuitionExport">⬇ Xuất CSV</button>
+          </div>
+          <p class="hint">Số buổi đã học = số buổi được điểm danh “có mặt”. Học phí thực thu = số buổi đã học × học phí/buổi. Hệ thống tự báo khi học sinh <b>sắp / đã kết thúc khóa</b>.</p>
+          <div id="tuitionResult"></div>
+        </section>
+
+        <!-- ============ VIEW: THÔNG BÁO ============ -->
+        <section class="view" id="view-notify" hidden>
+          <h3 class="block-title">🔔 Lớp học hôm nay</h3>
+          <div id="notifyToday" class="notify-list"></div>
+          <h3 class="block-title">🎓 Khóa học sắp / đã kết thúc</h3>
+          <div id="notifyCourses" class="notify-list"></div>
+        </section>
+
+        <!-- ============ VIEW: CÀI ĐẶT ============ -->
+        <section class="view" id="view-settings" hidden>
+          <div class="settings-card">
+            <h3>⏰ Nhắc lịch học</h3>
+            <p class="hint">Nhắc trước giờ học bao nhiêu phút để không bị lỡ lớp. (Mặc định 120 phút = 2 tiếng.)</p>
+            <div class="field row-inline">
+              <label for="leadMin">Nhắc trước (phút)</label>
+              <input id="leadMin" type="number" min="0" max="1440" step="5" value="120" />
+            </div>
+            <label class="check-row"><input type="checkbox" id="notifPerm" /> Bật thông báo trình duyệt (popup)</label>
+            <button class="btn" id="testNotify">Thử thông báo</button>
+          </div>
+
+          <div class="settings-card admin-only" id="demoCard">
+            <h3>🧪 Chế độ DEMO</h3>
+            <p class="hint">Đang chạy bằng dữ liệu mẫu trên trình duyệt này (chưa cấu hình Supabase). Bạn có thể đặt lại dữ liệu mẫu về ban đầu.</p>
+            <button class="btn danger" id="resetDemo">Đặt lại dữ liệu DEMO</button>
+          </div>
+
+          <div class="settings-card">
+            <h3>ℹ️ Tài khoản đăng nhập demo</h3>
+            <p class="hint" id="demoAccounts"></p>
+          </div>
+        </section>
+
+      </div><!-- /.content -->
+    </div><!-- /.main -->
+  </div><!-- /.layout -->
+
+  <!-- ===================== AUTH OVERLAY ===================== -->
+  <div class="auth-overlay" id="authOverlay" hidden>
+    <div class="auth-card">
+      <div class="logo big" id="authLogoBox"></div>
+      <div class="auth-content">
+        <h2 id="authTitle">Đăng nhập</h2>
+        <p class="muted" id="authSub">Đăng nhập để quản lý Trung tâm OPENMUSIC</p>
+
+        <div class="field" id="fName" hidden><label>Họ và tên</label><input type="text" id="authName" placeholder="VD: Nguyễn Văn A" autocomplete="name" /></div>
+        <div class="field" id="fEmail"><label>Email</label><input type="email" id="authEmail" placeholder="email@openmusic.vn" autocomplete="username" /></div>
+        <div class="field" id="fPass"><label>Mật khẩu</label><input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password" /></div>
+        <div class="field" id="fNew" hidden><label>Mật khẩu mới</label><input type="password" id="authNew" placeholder="Tối thiểu 6 ký tự" autocomplete="new-password" /></div>
+        <div class="field" id="fNew2" hidden><label>Nhập lại mật khẩu mới</label><input type="password" id="authNew2" placeholder="••••••••" autocomplete="new-password" /></div>
+
+        <div class="auth-err" id="authErr"></div>
+        <button class="btn-add" id="authPrimary">Đăng nhập</button>
+
+        <div class="auth-links">
+          <button class="linkbtn" id="lnkForgot">Quên mật khẩu?</button>
+          <button class="linkbtn" id="lnkSignup">Tạo tài khoản mới</button>
+          <button class="linkbtn" id="lnkBack" hidden>← Quay lại đăng nhập</button>
+        </div>
+        <div class="demo-hint" id="authDemoHint" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: BUỔI HỌC ===================== -->
+  <div id="modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">Thêm buổi học</h3>
+        <button class="x" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="formErr" class="form-err hidden"></div>
+        <form id="scheduleForm">
+          <input type="hidden" id="schedId" />
+          <div class="field">
+            <label for="fSubject">Môn / Nhạc cụ *</label>
+            <input id="fSubject" type="text" placeholder="VD: Piano cơ bản" required />
+          </div>
+          <div class="field">
+            <label for="fDate">Ngày (dd/mm/yyyy) *</label>
+            <div class="date-wrap">
+              <input id="fDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" required />
+              <button type="button" class="cal-btn" data-cal="fDate" aria-label="Chọn ngày">📅</button>
+              <input type="date" id="fDateNative" class="native-date" tabindex="-1" aria-hidden="true" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="fStart">Giờ bắt đầu (24h) *</label><input id="fStart" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" required /></div>
+            <div class="field"><label for="fEnd">Giờ kết thúc (24h) *</label><input id="fEnd" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" required /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="fClass">Lớp</label><input id="fClass" type="text" placeholder="VD: P1" /></div>
+            <div class="field"><label for="fRoom">Phòng</label><input id="fRoom" type="text" placeholder="VD: P.201" /></div>
+          </div>
+          <div class="field">
+            <label for="fOwner">Giáo viên phụ trách *</label>
+            <select id="fOwner"></select>
+          </div>
+          <div class="field">
+            <label>Học sinh trong lớp</label>
+            <div id="fStudents" class="chk-list"></div>
+            <div class="field-hint">Tick những học sinh tham gia buổi này — sau đó điểm danh ở trang “Hôm nay”.</div>
+          </div>
+          <div class="field">
+            <label for="fNote">Ghi chú</label>
+            <textarea id="fNote" rows="2" placeholder="Tùy chọn"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="modalCancel">Hủy</button>
+        <button class="btn primary" id="modalSave">Lưu buổi học</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: HỌC SINH ===================== -->
+  <div id="studentModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="smTitle">Thêm học sinh</h3>
+        <button class="x" id="smClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="smErr" class="form-err hidden"></div>
+        <form id="studentForm">
+          <input type="hidden" id="smId" />
+          <div class="field"><label for="smName">Họ và tên *</label><input id="smName" type="text" placeholder="VD: Nguyễn An" required /></div>
+          <div class="row-2">
+            <div class="field"><label for="smPhone">Điện thoại</label><input id="smPhone" type="text" placeholder="09xxxxxxxx" /></div>
+            <div class="field"><label for="smGuardian">Phụ huynh</label><input id="smGuardian" type="text" placeholder="VD: Chị Mai" /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="smSubject">Môn / Nhạc cụ</label><input id="smSubject" type="text" placeholder="VD: Piano" /></div>
+            <div class="field"><label for="smTeacher">Giáo viên</label><select id="smTeacher"></select></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="smTotal">Số buổi của khóa *</label><input id="smTotal" type="number" min="1" step="1" value="12" /></div>
+            <div class="field"><label for="smFee">Học phí mỗi buổi (đ)</label><input id="smFee" type="number" min="0" step="1000" value="0" /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="smStart">Ngày bắt đầu</label>
+              <div class="date-wrap">
+                <input id="smStart" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+                <button type="button" class="cal-btn" data-cal="smStart" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="smStartNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+            <div class="field"><label for="smStatus">Trạng thái</label>
+              <select id="smStatus"><option value="active">Đang học</option><option value="paused">Tạm nghỉ</option><option value="completed">Đã kết thúc</option></select>
+            </div>
+          </div>
+          <div class="field"><label for="smNote">Ghi chú</label><textarea id="smNote" rows="2" placeholder="Tùy chọn"></textarea></div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="smCancel">Hủy</button>
+        <button class="btn primary" id="smSave">Lưu học sinh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: GIÁO VIÊN ===================== -->
+  <div id="teacherModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="tmTitle">Thêm giáo viên</h3>
+        <button class="x" id="tmClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="tmErr" class="form-err hidden"></div>
+        <form id="teacherForm">
+          <input type="hidden" id="tmId" />
+          <div class="field"><label for="tmName">Họ và tên *</label><input id="tmName" type="text" placeholder="VD: Cô Hoa" required /></div>
+          <div class="row-2">
+            <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
+            <div class="field"><label for="tmPay">Lương mỗi buổi (đ)</label><input id="tmPay" type="number" min="0" step="1000" value="0" /></div>
+          </div>
+          <div class="field">
+            <label for="tmAcc">Tài khoản đăng nhập (gắn email)</label>
+            <select id="tmAcc"></select>
+            <div class="field-hint">Để “— chưa gắn —” nếu giáo viên chưa đăng ký. Gắn email để giáo viên tự đăng nhập, xem lịch & điểm danh.</div>
+          </div>
+          <div class="field"><label for="tmNote">Ghi chú</label><input id="tmNote" type="text" placeholder="VD: Piano" /></div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="tmCancel">Hủy</button>
+        <button class="btn primary" id="tmSave">Lưu giáo viên</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="backend.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

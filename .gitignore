@@ -1,0 +1,13 @@
+# Tooling cục bộ của Claude Code
+.claude/
+
+# Junk hệ điều hành
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.log
