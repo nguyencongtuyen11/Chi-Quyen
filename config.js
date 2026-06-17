@@ -13,6 +13,6 @@
 // =====================================================================
 
 window.APP_CONFIG = {
-  SUPABASE_URL: "DAN_SUPABASE_URL",
-  SUPABASE_ANON_KEY: "DAN_SUPABASE_ANON_KEY",
+  SUPABASE_URL: "https://ivilqvnljoucbsxzdvwf.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2aWxxdm5sam91Y2JzeHpkdndmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDMxOTAsImV4cCI6MjA5NzI3OTE5MH0.J9t-Up3Ws7EVfmTxNDdBUvKMWeCQkwdJXxPfHzLa4-U",
 };
