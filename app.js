@@ -105,7 +105,8 @@
     $("logoBox").innerHTML = NOTE;
     $("authLogoBox").innerHTML = NOTE;
     $("themeBtn").innerHTML = document.documentElement.getAttribute("data-theme") === "dark" ? MOON : SUN;
-    setupModePill();
+    setupModeUI();
+    initSidebarCollapse();
     wireEvents();
 
     recovering = B.isRecovery();
@@ -123,11 +124,8 @@
     else if (!recovering) { showAuth(); setAuthMode("login"); }
   }
 
-  function setupModePill() {
+  function setupModeUI() {
     const demo = window.BACKEND_MODE === "demo";
-    const pill = $("modePill");
-    pill.textContent = demo ? "● Chế độ DEMO (lưu trên trình duyệt)" : "● Đã kết nối Supabase";
-    pill.className = "mode-pill " + (demo ? "demo" : "live");
     const accStr = "admin@openmusic.vn · co.lan@openmusic.vn · thay.nam@openmusic.vn — mật khẩu: 123456";
     $("demoAccounts").textContent = demo ? accStr : "Đang dùng Supabase — đăng nhập bằng tài khoản thật của trung tâm.";
     $("demoCard").hidden = !demo;
@@ -136,6 +134,20 @@
       h.hidden = false;
       h.innerHTML = "<b>Chế độ DEMO</b> — đăng nhập thử:<br>• Admin: <b>admin@openmusic.vn</b><br>• Giáo viên: <b>co.lan@openmusic.vn</b> / <b>thay.nam@openmusic.vn</b><br>Mật khẩu: <b>123456</b>";
     }
+  }
+
+  // ---------- THU GỌN SIDEBAR ----------
+  function initSidebarCollapse() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("om-sidebar-collapsed") === "1"; } catch (e) {}
+    $("sidebar").classList.toggle("collapsed", collapsed);
+  }
+  function toggleSidebarCollapse() {
+    const sb = $("sidebar");
+    const collapsed = !sb.classList.contains("collapsed");
+    sb.classList.toggle("collapsed", collapsed);
+    try { localStorage.setItem("om-sidebar-collapsed", collapsed ? "1" : "0"); } catch (e) {}
+    $("sidebarToggle").title = collapsed ? "Mở rộng menu" : "Thu gọn menu";
   }
 
   // =====================================================================
@@ -1058,6 +1070,7 @@
     $("menu").addEventListener("click", (e) => { const b = e.target.closest(".menu-item"); if (b) switchView(b.getAttribute("data-view")); });
     $("menuBtn").addEventListener("click", openSidebar);
     $("scrim").addEventListener("click", closeSidebar);
+    $("sidebarToggle").addEventListener("click", toggleSidebarCollapse);
 
     // Reminder bar đóng
     $("reminderBar").addEventListener("click", (e) => { if (e.target.classList.contains("rb-x")) $("reminderBar").classList.add("hidden"); });

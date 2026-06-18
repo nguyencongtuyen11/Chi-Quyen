@@ -15,7 +15,16 @@
       !String(c.SUPABASE_ANON_KEY).startsWith("DAN_"));
   }
 
-  const MODE = configReady() && window.supabase ? "supabase" : "demo";
+  // Cho phép ép chế độ DEMO để dùng thử / kiểm thử mà không đụng dữ liệu thật:
+  //   thêm ?demo=1 vào URL, hoặc đặt localStorage 'om-force-demo' = '1'.
+  function forcedDemo() {
+    try {
+      if (new URLSearchParams(location.search).get("demo") === "1") return true;
+      return localStorage.getItem("om-force-demo") === "1";
+    } catch (e) { return false; }
+  }
+
+  const MODE = configReady() && window.supabase && !forcedDemo() ? "supabase" : "demo";
   const nowISO = () => new Date().toISOString();
   const uid = () => "id-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
