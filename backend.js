@@ -89,6 +89,8 @@
         return q;
       },
       addSchedule(o) { return sb.from("schedules").insert(o).select("*").single(); },
+      addSchedulesBulk(rows) { return sb.from("schedules").insert(rows).select("*"); },
+      addAttendanceBulk(rows) { if (!rows || !rows.length) return Promise.resolve({ data: [], error: null }); return sb.from("attendance").insert(rows); },
       updateSchedule(id, o) { return sb.from("schedules").update(o).eq("id", id); },
       deleteSchedule(id) { return sb.from("schedules").delete().eq("id", id); },
 
@@ -307,6 +309,8 @@
         return ok(list.map((s) => Object.assign({}, s)));
       },
       async addSchedule(o) { const row = Object.assign({ id: uid(), teacher_present: null, teacher_marked_at: null, created_at: nowISO(), updated_at: nowISO() }, o); store.schedules.push(row); save(store); return ok(row); },
+      async addSchedulesBulk(rows) { const out = (rows || []).map((o) => Object.assign({ id: uid(), teacher_present: null, teacher_marked_at: null, created_at: nowISO(), updated_at: nowISO() }, o)); out.forEach((r) => store.schedules.push(r)); save(store); return ok(out); },
+      async addAttendanceBulk(rows) { (rows || []).forEach((o) => store.attendance.push(Object.assign({ id: uid(), present: null, marked_at: null, marked_by: null }, o))); save(store); return ok(true); },
       async updateSchedule(id, o) { const s = store.schedules.find((x) => x.id === id); if (s) { Object.assign(s, o); s.updated_at = nowISO(); } save(store); return ok(s); },
       async deleteSchedule(id) {
         store.schedules = store.schedules.filter((x) => x.id !== id);

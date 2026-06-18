@@ -26,6 +26,7 @@
   let attDate = startOfToday();   // ngày đang điểm danh (mặc định hôm nay)
   let currentView = "today";
   let recovering = false, resetDone = false;
+  let modalApplyWeeks = [], modalApplyCopy = true, weekPickerCb = null;
 
   // hôm nay + nhắc lịch
   let remindCache = { date: null, scheds: [] };
@@ -698,6 +699,12 @@
       ? students.map((st) => `<label class="chk-item"><input type="checkbox" data-sid="${st.id}" ${checkedIds.has(st.id) ? "checked" : ""}/> ${esc(st.full_name)}<span class="ci-sub">${esc(st.subject || "")}</span></label>`).join("")
       : '<div class="chk-empty">Chưa có học sinh — thêm ở mục “Học sinh”.</div>';
 
+    // reset áp dụng cho các tuần sau
+    $("fRepeat").checked = false;
+    $("fRepeatWrap").style.display = "none";
+    $("fRepeatInfo").textContent = "";
+    modalApplyWeeks = []; modalApplyCopy = true;
+
     $("modal").classList.remove("hidden");
     $("fSubject").focus();
   }
@@ -743,8 +750,13 @@
       existingIds.forEach((sid) => { if (!checkedSet.has(sid)) ops.push(B.removeAttendance(schedId, sid)); });
       await Promise.all(ops);
 
+      let repInfo = "";
+      if ($("fRepeat").checked && modalApplyWeeks.length) {
+        const n = await replicateClassToWeeks(payload, checked, modalApplyWeeks, modalApplyCopy);
+        repInfo = ` · +${n} tuần`;
+      }
       closeScheduleModal();
-      toast(id ? "Đã cập nhật buổi học." : "Đã thêm buổi học.", "ok");
+      toast((id ? "Đã cập nhật buổi học." : "Đã thêm buổi học.") + repInfo, "ok");
       viewDate = parseYmd(sd);
       if (currentView === "schedule") setViewDate(viewDate);
       if (currentView === "today") loadToday();
@@ -765,6 +777,98 @@
     toast("Đã xóa buổi học.", "ok");
     if (currentView === "schedule") loadWeek();
     if (currentView === "today") loadToday();
+  }
+
+  // =====================================================================
+  //  NHÂN BẢN TKB SANG CÁC TUẦN (bộ chọn tuần)
+  // =====================================================================
+  function openWeekPicker(opts) {
+    $("wkTitle").textContent = opts.title || "Áp dụng cho các tuần";
+    $("wkSub").textContent = opts.subtitle || "";
+    $("wkCopyRow").style.display = opts.showCopy === false ? "none" : "";
+    $("wkCopyStudents").checked = true;
+    const N = 44;
+    let ws = startOfWeek(opts.fromWeekStart || addDays(startOfWeek(viewDate), 7));
+    let html = "", curMon = null;
+    for (let i = 0; i < N; i++) {
+      const we = addDays(ws, 6), monKey = ws.getFullYear() + "-" + ws.getMonth();
+      if (monKey !== curMon) { curMon = monKey; html += `<div class="wk-month"><label><input type="checkbox" class="wk-mon" data-mon="${monKey}"/> Tháng ${ws.getMonth() + 1}/${ws.getFullYear()}</label></div>`; }
+      html += `<label class="wk-item" data-mon="${monKey}"><input type="checkbox" class="wk-week" value="${ymd(ws)}"/> Tuần ${dmy(ws)} – ${dmy(we)}</label>`;
+      ws = addDays(ws, 7);
+    }
+    $("wkList").innerHTML = html;
+    weekPickerCb = opts.onApply || null;
+    $("weekModal").classList.remove("hidden");
+  }
+  function closeWeekPicker() { $("weekModal").classList.add("hidden"); }
+  function weekPickerConfirm() {
+    const weeks = [...document.querySelectorAll("#wkList .wk-week:checked")].map((c) => c.value);
+    if (!weeks.length) return toast("Hãy chọn ít nhất 1 tuần.", "err");
+    const copy = $("wkCopyStudents").checked;
+    closeWeekPicker();
+    if (weekPickerCb) weekPickerCb(weeks, copy);
+  }
+
+  // Áp dụng TOÀN BỘ lịch tuần nguồn sang các tuần được chọn
+  async function applyWeekToWeeks(srcWeekStart, targetWeekStarts, copyStudents) {
+    toast("Đang áp dụng lịch…");
+    const ws = srcWeekStart, we = addDays(ws, 6);
+    const { data: src } = await B.listSchedules({ from: ymd(ws), to: ymd(we), teacherId: null });
+    if (!src || !src.length) return toast("Tuần nguồn chưa có lịch để áp dụng.", "err");
+    let srcStudents = {};
+    if (copyStudents) {
+      const { data: atts } = await B.listAttendanceBySchedules(src.map((s) => s.id));
+      (atts || []).forEach((a) => { (srcStudents[a.schedule_id] = srcStudents[a.schedule_id] || []).push(a.student_id); });
+    }
+    const sorted = targetWeekStarts.slice().sort();
+    const { data: existing } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: null });
+    const exKey = new Set((existing || []).map((s) => s.schedule_date + "|" + s.start_time + "|" + s.teacher_id));
+    const newRows = [], srcOf = [];
+    targetWeekStarts.forEach((twY) => {
+      const tw = parseYmd(twY);
+      src.forEach((s) => {
+        const off = Math.round((parseYmd(s.schedule_date) - srcWeekStart) / 86400000);
+        const nd = ymd(addDays(tw, off)), key = nd + "|" + s.start_time + "|" + s.teacher_id;
+        if (exKey.has(key)) return;
+        exKey.add(key);
+        newRows.push({ teacher_id: s.teacher_id, schedule_date: nd, subject: s.subject, class_name: s.class_name, start_time: s.start_time, end_time: s.end_time, room: s.room, lesson_type: s.lesson_type || "ca_nhan", teacher_name: s.teacher_name, note: s.note });
+        srcOf.push(s.id);
+      });
+    });
+    if (!newRows.length) return toast("Các tuần đã chọn đều đã có lịch — không thêm trùng.", "ok");
+    const { data: inserted, error } = await B.addSchedulesBulk(newRows);
+    if (error) return toast("Lỗi áp dụng: " + error.message, "err");
+    if (copyStudents) {
+      const insMap = {}; (inserted || []).forEach((r) => { insMap[r.schedule_date + "|" + r.start_time + "|" + r.teacher_id] = r.id; });
+      const attRows = [];
+      newRows.forEach((nr, i) => { const id = insMap[nr.schedule_date + "|" + nr.start_time + "|" + nr.teacher_id], studs = srcStudents[srcOf[i]] || []; if (id) studs.forEach((sid) => attRows.push({ schedule_id: id, student_id: sid })); });
+      if (attRows.length) await B.addAttendanceBulk(attRows);
+    }
+    toast(`Đã áp dụng ${(inserted || []).length} buổi cho ${targetWeekStarts.length} tuần.`, "ok");
+    if (currentView === "schedule") loadWeek();
+  }
+
+  // Nhân bản 1 buổi học sang các tuần được chọn (cùng thứ)
+  async function replicateClassToWeeks(payload, studentIds, weekStarts, copyStudents) {
+    const baseDate = parseYmd(payload.schedule_date), off = (baseDate.getDay() + 6) % 7;
+    const sorted = weekStarts.slice().sort();
+    const { data: existing } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: payload.teacher_id });
+    const exKey = new Set((existing || []).map((s) => s.schedule_date + "|" + s.start_time + "|" + s.teacher_id));
+    const newRows = [];
+    weekStarts.forEach((twY) => {
+      const nd = ymd(addDays(parseYmd(twY), off)), key = nd + "|" + payload.start_time + "|" + payload.teacher_id;
+      if (exKey.has(key)) return;
+      exKey.add(key);
+      newRows.push({ teacher_id: payload.teacher_id, schedule_date: nd, subject: payload.subject, class_name: payload.class_name, start_time: payload.start_time, end_time: payload.end_time, room: payload.room, lesson_type: payload.lesson_type, teacher_name: payload.teacher_name, note: payload.note });
+    });
+    if (!newRows.length) return 0;
+    const { data: inserted } = await B.addSchedulesBulk(newRows);
+    if (copyStudents && studentIds && studentIds.length) {
+      const attRows = [];
+      (inserted || []).forEach((r) => studentIds.forEach((sid) => attRows.push({ schedule_id: r.id, student_id: sid })));
+      if (attRows.length) await B.addAttendanceBulk(attRows);
+    }
+    return (inserted || []).length;
   }
 
   // =====================================================================
@@ -1296,6 +1400,42 @@
     $("teacherFilter").addEventListener("change", () => { loadWeek(); });
     $("addBtn").addEventListener("click", () => openScheduleModal(null, ymd(viewDate), buoiOf(new Date().toTimeString())));
 
+    // Áp dụng cả tuần cho các tuần sau
+    $("applyWeekBtn").addEventListener("click", () => {
+      const ws = startOfWeek(viewDate);
+      openWeekPicker({
+        title: "Áp dụng lịch tuần này cho các tuần sau",
+        subtitle: `Sao chép toàn bộ lớp trong tuần ${dmy(ws)} – ${dmy(addDays(ws, 6))} sang các tuần được chọn (cùng thứ, cùng giờ, cùng giáo viên). Tuần đã có lịch sẽ được bỏ qua để không trùng.`,
+        fromWeekStart: addDays(ws, 7),
+        onApply: (weeks, copy) => applyWeekToWeeks(ws, weeks, copy),
+      });
+    });
+    // Bộ chọn tuần
+    $("wkClose").addEventListener("click", closeWeekPicker);
+    $("wkCancel").addEventListener("click", closeWeekPicker);
+    $("wkApply").addEventListener("click", weekPickerConfirm);
+    $("weekModal").addEventListener("click", (e) => { if (e.target === $("weekModal")) closeWeekPicker(); });
+    $("wkAll").addEventListener("click", () => document.querySelectorAll("#wkList input[type=checkbox]").forEach((c) => (c.checked = true)));
+    $("wkNone").addEventListener("click", () => document.querySelectorAll("#wkList input[type=checkbox]").forEach((c) => (c.checked = false)));
+    $("wkList").addEventListener("change", (e) => {
+      const m = e.target.closest(".wk-mon");
+      if (m) document.querySelectorAll(`#wkList .wk-item[data-mon="${m.getAttribute("data-mon")}"] .wk-week`).forEach((c) => (c.checked = m.checked));
+    });
+    // Nút lặp trong modal đặt buổi
+    $("fRepeat").addEventListener("change", () => {
+      $("fRepeatWrap").style.display = $("fRepeat").checked ? "" : "none";
+      if (!$("fRepeat").checked) { modalApplyWeeks = []; $("fRepeatInfo").textContent = ""; }
+    });
+    $("fRepeatPick").addEventListener("click", () => {
+      const base = parseYmd(dmyToYmd($("fDate").value) || ymd(viewDate));
+      openWeekPicker({
+        title: "Áp dụng buổi học cho các tuần sau",
+        subtitle: "Buổi sẽ được tạo cùng thứ trong mỗi tuần bạn chọn (kèm học sinh nếu tick).",
+        fromWeekStart: addDays(startOfWeek(base), 7),
+        onApply: (weeks, copy) => { modalApplyWeeks = weeks; modalApplyCopy = copy; $("fRepeatInfo").textContent = "Đã chọn " + weeks.length + " tuần."; },
+      });
+    });
+
     // Lịch tuần — click vào ô (sửa/xóa/thêm)
     $("tkbWrap").addEventListener("click", (e) => {
       const ed = e.target.closest("[data-edit]"), de = e.target.closest("[data-del]"), ad = e.target.closest("[data-add]");
@@ -1387,7 +1527,8 @@
     // ESC đóng modal/sidebar
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!$("accountMenu").classList.contains("hidden")) closeAccountMenu();
+      if (!$("weekModal").classList.contains("hidden")) closeWeekPicker();
+      else if (!$("accountMenu").classList.contains("hidden")) closeAccountMenu();
       else if (!$("modal").classList.contains("hidden")) closeScheduleModal();
       else if (!$("studentModal").classList.contains("hidden")) closeStudentModal();
       else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();

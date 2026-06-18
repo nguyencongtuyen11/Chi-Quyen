@@ -118,6 +118,7 @@
             <select id="teacherFilter" class="admin-only" title="Lọc theo giáo viên">
               <option value="all">Tất cả giáo viên</option>
             </select>
+            <button class="btn admin-only" id="applyWeekBtn" title="Sao chép cả tuần này sang các tuần khác">📋 Áp dụng tuần…</button>
             <button class="btn primary admin-only" id="addBtn">+ Thêm buổi học</button>
           </div>
           <div class="datenav">
@@ -302,6 +303,13 @@
             <div class="field-hint">Tick những học sinh tham gia buổi này — sau đó điểm danh ở trang “Hôm nay”.</div>
           </div>
           <div class="field">
+            <label class="check-row" style="margin:0;"><input type="checkbox" id="fRepeat" /> Áp dụng buổi này cho các tuần sau (lặp lại)</label>
+            <div id="fRepeatWrap" style="display:none; margin-top:8px;">
+              <button type="button" class="btn btn-sm" id="fRepeatPick">📅 Chọn tuần áp dụng…</button>
+              <span id="fRepeatInfo" class="field-hint" style="display:inline; margin-left:8px;"></span>
+            </div>
+          </div>
+          <div class="field">
             <label for="fNote">Ghi chú</label>
             <textarea id="fNote" rows="2" placeholder="Tùy chọn"></textarea>
           </div>
@@ -418,6 +426,29 @@
       <div class="modal-foot">
         <button class="btn" id="tmCancel">Hủy</button>
         <button class="btn primary" id="tmSave">Lưu giáo viên</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: CHỌN TUẦN ÁP DỤNG ===================== -->
+  <div id="weekModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="wkTitle">Áp dụng cho các tuần</h3>
+        <button class="x" id="wkClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-hint" id="wkSub" style="margin-top:0;"></p>
+        <div class="wk-controls">
+          <button type="button" class="btn btn-sm" id="wkAll">Chọn tất cả</button>
+          <button type="button" class="btn btn-sm" id="wkNone">Bỏ chọn</button>
+        </div>
+        <label class="check-row" id="wkCopyRow"><input type="checkbox" id="wkCopyStudents" checked /> Sao chép cả học sinh trong lớp</label>
+        <div id="wkList" class="wk-list"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="wkCancel">Hủy</button>
+        <button class="btn primary" id="wkApply">Áp dụng</button>
       </div>
     </div>
   </div>
