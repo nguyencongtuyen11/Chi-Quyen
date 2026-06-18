@@ -139,8 +139,8 @@
   // =====================================================================
   async function init() {
     initTheme();
-    $("logoBox").innerHTML = NOTE;
-    $("authLogoBox").innerHTML = NOTE;
+    $("logoBox").innerHTML = '<img src="logo-icon.png" alt="OPENMUSIC" />';
+    $("authLogoBox").innerHTML = '<img src="logo-icon.png" alt="OPENMUSIC" />';
     $("themeBtn").innerHTML = document.documentElement.getAttribute("data-theme") === "dark" ? MOON : SUN;
     setupModeUI();
     initSidebarCollapse();

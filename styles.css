@@ -51,6 +51,7 @@ svg { display: block; }
 /* ===== LOGO (nốt nhạc, liquid glass) ===== */
 .logo { position: relative; overflow: hidden; border-radius: 14px; background: linear-gradient(135deg, var(--primary), var(--primary-press)); display: grid; place-items: center; flex-shrink: 0; box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 38%, transparent); }
 .logo svg { width: 60%; height: 60%; color: #fff; }
+.logo img { position: relative; z-index: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .logo::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: linear-gradient(118deg, rgba(255,255,255,.40) 0%, rgba(255,255,255,.04) 30%, rgba(255,255,255,0) 55%, rgba(255,255,255,.12) 100%); mix-blend-mode: screen; }
 
