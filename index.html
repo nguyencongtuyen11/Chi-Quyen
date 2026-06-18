@@ -207,17 +207,7 @@
           <div class="settings-card admin-only" id="pricingCard">
             <h3>💵 Bảng giá mặc định theo loại lớp</h3>
             <p class="hint">Thiết lập <b>1 lần</b> — khi thêm giáo viên / học sinh mới, lương & học phí sẽ tự điền theo loại lớp (cá nhân / đôi / nhóm). Bạn vẫn sửa lại từng người được.</p>
-            <div class="price-grid">
-              <div class="pg-h"></div><div class="pg-h">Cá nhân</div><div class="pg-h">Đôi</div><div class="pg-h">Nhóm</div>
-              <div class="pg-l">Lương GV/buổi</div>
-              <input id="dpCaNhan" type="number" min="0" step="1000" value="0" />
-              <input id="dpDoi" type="number" min="0" step="1000" value="0" />
-              <input id="dpNhom" type="number" min="0" step="1000" value="0" />
-              <div class="pg-l">Học phí HS/buổi</div>
-              <input id="dtCaNhan" type="number" min="0" step="1000" value="0" />
-              <input id="dtDoi" type="number" min="0" step="1000" value="0" />
-              <input id="dtNhom" type="number" min="0" step="1000" value="0" />
-            </div>
+            <div class="price-list" id="pricingBody"></div>
             <button class="btn primary" id="savePricing" style="margin-top:14px;">Lưu bảng giá</button>
           </div>
 
@@ -379,11 +369,7 @@
           <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
           <div class="field">
             <label>Lương mỗi buổi theo loại lớp (đ)</label>
-            <div class="pay-rates">
-              <div class="pr-item"><span>Cá nhân</span><input id="tmPayCaNhan" type="number" min="0" step="1000" value="0" /></div>
-              <div class="pr-item"><span>Đôi</span><input id="tmPayDoi" type="number" min="0" step="1000" value="0" /></div>
-              <div class="pr-item"><span>Nhóm</span><input id="tmPayNhom" type="number" min="0" step="1000" value="0" /></div>
-            </div>
+            <div class="pay-rates" id="tmPayRates"></div>
           </div>
           <div class="field">
             <label for="tmAcc">Tài khoản đăng nhập (gắn email)</label>

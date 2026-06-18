@@ -153,24 +153,24 @@
         { id: "u-nam",   full_name: "Thầy Nam", email: "thay.nam@openmusic.vn", role: "teacher" },
       ];
       const teachers = [
-        { id: "t-lan", full_name: "Cô Lan",  user_id: "u-lan", phone: "0901111111", pay_per_session: 150000, pay_rates: { ca_nhan: 150000, doi: 120000, nhom: 90000 }, note: "Piano", created_at: nowISO() },
-        { id: "t-nam", full_name: "Thầy Nam", user_id: "u-nam", phone: "0902222222", pay_per_session: 130000, pay_rates: { ca_nhan: 130000, doi: 100000, nhom: 80000 }, note: "Guitar", created_at: nowISO() },
-        { id: "t-hoa", full_name: "Cô Hoa",  user_id: null,    phone: "0903333333", pay_per_session: 140000, pay_rates: { ca_nhan: 140000, doi: 110000, nhom: 85000 }, note: "Thanh nhạc (chưa có tài khoản)", created_at: nowISO() },
+        { id: "t-lan", full_name: "Cô Lan",  user_id: "u-lan", phone: "0901111111", pay_per_session: 150000, pay_rates: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 }, note: "Piano", created_at: nowISO() },
+        { id: "t-nam", full_name: "Thầy Nam", user_id: "u-nam", phone: "0902222222", pay_per_session: 130000, pay_rates: { ca_nhan: 130000, doi: 100000, nhom: 80000, gia_su: 180000 }, note: "Guitar", created_at: nowISO() },
+        { id: "t-hoa", full_name: "Cô Hoa",  user_id: null,    phone: "0903333333", pay_per_session: 140000, pay_rates: { ca_nhan: 140000, doi: 110000, nhom: 85000, gia_su: 190000 }, note: "Thanh nhạc (chưa có tài khoản)", created_at: nowISO() },
       ];
       const students = [
         { id: "s1", full_name: "Nguyễn An",   phone: "0911000001", guardian: "Chị Mai",  subject: "Piano",  lesson_type: "ca_nhan", teacher_id: "t-lan", total_sessions: 12, tuition_per_session: 200000, start_date: d(-20), status: "active", note: "", created_at: nowISO() },
         { id: "s2", full_name: "Trần Bình",   phone: "0911000002", guardian: "Anh Hùng", subject: "Piano",  lesson_type: "doi",     teacher_id: "t-lan", total_sessions: 24, tuition_per_session: 160000, start_date: d(-30), status: "active", note: "", created_at: nowISO() },
         { id: "s3", full_name: "Lê Châu",     phone: "0911000003", guardian: "Chị Hoa",  subject: "Guitar", lesson_type: "ca_nhan", teacher_id: "t-nam", total_sessions: 12, tuition_per_session: 170000, start_date: d(-10), status: "active", note: "", created_at: nowISO() },
         { id: "s4", full_name: "Phạm Dương",  phone: "0911000004", guardian: "Anh Sơn",  subject: "Guitar", lesson_type: "nhom",    teacher_id: "t-nam", total_sessions: 24, tuition_per_session: 120000, start_date: d(-40), status: "active", note: "", created_at: nowISO() },
-        { id: "s5", full_name: "Vũ Em",       phone: "0911000005", guardian: "Chị Lan",  subject: "Thanh nhạc", lesson_type: "ca_nhan", teacher_id: "t-hoa", total_sessions: 12, tuition_per_session: 220000, start_date: d(-5),  status: "active", note: "", created_at: nowISO() },
+        { id: "s5", full_name: "Vũ Em",       phone: "0911000005", guardian: "Chị Lan",  subject: "Thanh nhạc", lesson_type: "gia_su", teacher_id: "t-hoa", total_sessions: 12, tuition_per_session: 250000, start_date: d(-5),  status: "active", note: "", created_at: nowISO() },
       ];
       // Lịch tuần: hôm nay + vài ngày, gắn HS qua attendance
       const schedules = [
         { id: "sc1", teacher_id: "t-lan", schedule_date: d(0),  subject: "Piano", lesson_type: "ca_nhan", class_name: "P1", start_time: "08:00", end_time: "09:30", room: "P.201", teacher_name: "Cô Lan",  teacher_present: null, teacher_marked_at: null, note: "", created_at: nowISO(), updated_at: nowISO() },
         { id: "sc2", teacher_id: "t-nam", schedule_date: d(0),  subject: "Guitar", lesson_type: "nhom", class_name: "G1", start_time: "18:30", end_time: "20:00", room: "P.105", teacher_name: "Thầy Nam", teacher_present: null, teacher_marked_at: null, note: "", created_at: nowISO(), updated_at: nowISO() },
         { id: "sc3", teacher_id: "t-lan", schedule_date: d(-2), subject: "Piano", lesson_type: "ca_nhan", class_name: "P1", start_time: "08:00", end_time: "09:30", room: "P.201", teacher_name: "Cô Lan",  teacher_present: true, teacher_marked_at: nowISO(), note: "", created_at: nowISO(), updated_at: nowISO() },
-        { id: "sc4", teacher_id: "t-nam", schedule_date: d(-1), subject: "Guitar", lesson_type: "nhom", class_name: "G1", start_time: "18:30", end_time: "20:00", room: "P.105", teacher_name: "Thầy Nam", teacher_present: true, teacher_marked_at: nowISO(), note: "", created_at: nowISO(), updated_at: nowISO() },
-        { id: "sc5", teacher_id: "t-hoa", schedule_date: d(1),  subject: "Thanh nhạc", lesson_type: "ca_nhan", class_name: "V1", start_time: "14:00", end_time: "15:30", room: "P.302", teacher_name: "Cô Hoa",  teacher_present: null, teacher_marked_at: null, note: "", created_at: nowISO(), updated_at: nowISO() },
+        { id: "sc4", teacher_id: "t-nam", schedule_date: d(-1), subject: "Guitar", lesson_type: "gia_su", class_name: "G1", start_time: "18:30", end_time: "20:00", room: "P.105", teacher_name: "Thầy Nam", teacher_present: true, teacher_marked_at: nowISO(), note: "", created_at: nowISO(), updated_at: nowISO() },
+        { id: "sc5", teacher_id: "t-hoa", schedule_date: d(1),  subject: "Thanh nhạc", lesson_type: "gia_su", class_name: "V1", start_time: "14:00", end_time: "15:30", room: "P.302", teacher_name: "Cô Hoa",  teacher_present: null, teacher_marked_at: null, note: "", created_at: nowISO(), updated_at: nowISO() },
         { id: "sc6", teacher_id: "t-lan", schedule_date: d(2),  subject: "Piano", lesson_type: "doi", class_name: "P1", start_time: "08:00", end_time: "09:30", room: "P.201", teacher_name: "Cô Lan",  teacher_present: null, teacher_marked_at: null, note: "", created_at: nowISO(), updated_at: nowISO() },
       ];
       const attendance = [
@@ -189,8 +189,8 @@
         { id: uid(), schedule_id: "sc6", student_id: "s2", present: null, marked_at: null, marked_by: null },
       ];
       const settings = {
-        default_pay: { ca_nhan: 150000, doi: 120000, nhom: 90000 },
-        default_tuition: { ca_nhan: 200000, doi: 160000, nhom: 120000 },
+        default_pay: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 },
+        default_tuition: { ca_nhan: 200000, doi: 160000, nhom: 120000, gia_su: 250000 },
       };
       return { users, profiles, teachers, students, schedules, attendance, settings };
     }

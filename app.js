@@ -43,7 +43,7 @@
 
   // Môn học & loại lớp (cá nhân / đôi / nhóm)
   const SUBJECTS = ["Piano", "Guitar", "Thanh nhạc", "Múa", "Vẽ", "Cờ vua"];
-  const LESSON_TYPES = [{ key: "ca_nhan", label: "Cá nhân" }, { key: "doi", label: "Đôi" }, { key: "nhom", label: "Nhóm" }];
+  const LESSON_TYPES = [{ key: "ca_nhan", label: "Cá nhân" }, { key: "doi", label: "Đôi" }, { key: "nhom", label: "Nhóm" }, { key: "gia_su", label: "Gia sư" }];
   function lessonTypeLabel(k) { const t = LESSON_TYPES.find((x) => x.key === k); return t ? t.label : "Cá nhân"; }
   function fillLessonTypeSelect(sel, val) { sel.innerHTML = LESSON_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join(""); sel.value = val || "ca_nhan"; }
   let settings = {};
@@ -54,6 +54,18 @@
     const r = teacher.pay_rates || {};
     if (r[type] != null && r[type] !== "") return Number(r[type]) || 0;
     return Number(teacher.pay_per_session) || 0;
+  }
+  // Sinh ô nhập lương theo loại lớp (động theo LESSON_TYPES)
+  function renderPayRateInputs(container, rates) {
+    rates = rates || {};
+    container.innerHTML = LESSON_TYPES.map((t) =>
+      `<div class="pr-item"><span>${t.label}</span><input type="number" min="0" step="1000" data-ptype="${t.key}" value="${Number(rates[t.key]) || 0}" /></div>`
+    ).join("");
+  }
+  function readRateInputs(container, attr) {
+    const r = {};
+    container.querySelectorAll("input[" + attr + "]").forEach((inp) => { r[inp.getAttribute(attr)] = parseInt(inp.value, 10) || 0; });
+    return r;
   }
 
   const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -855,9 +867,7 @@
         `<div class="ic-head"><div class="ic-avatar">${esc(initials(t.full_name))}</div>` +
         `<div class="ic-title"><div class="nm">${esc(t.full_name)}</div><div class="sb">${esc(t.note || "Giáo viên")}</div></div></div>` +
         `<div class="ic-rows">` +
-          row("Lương cá nhân", money(teacherPayFor(t, "ca_nhan"))) +
-          row("Lương đôi", money(teacherPayFor(t, "doi"))) +
-          row("Lương nhóm", money(teacherPayFor(t, "nhom"))) +
+          LESSON_TYPES.map((lt) => row("Lương " + lt.label.toLowerCase(), money(teacherPayFor(t, lt.key)))).join("") +
           row("Tài khoản", t.user_id ? esc(linkedName(t.user_id)) : '<span style="color:var(--muted-2)">chưa gắn</span>') +
           (t.phone ? row("Điện thoại", esc(t.phone)) : "") +
         `</div>` +
@@ -881,15 +891,12 @@
         .map((p) => `<option value="${p.id}">${esc((p.email || p.full_name || "?") + (p.role === "admin" ? " (admin)" : ""))}</option>`).join("");
     if (isEdit) {
       $("tmName").value = t.full_name || ""; $("tmPhone").value = t.phone || "";
-      const r = t.pay_rates || {};
-      $("tmPayCaNhan").value = r.ca_nhan != null ? r.ca_nhan : (t.pay_per_session || 0);
-      $("tmPayDoi").value = r.doi != null ? r.doi : 0;
-      $("tmPayNhom").value = r.nhom != null ? r.nhom : 0;
+      const r = Object.assign({}, t.pay_rates || {});
+      if (r.ca_nhan == null) r.ca_nhan = t.pay_per_session || 0;
+      renderPayRateInputs($("tmPayRates"), r);
       acc.value = t.user_id || ""; $("tmNote").value = t.note || "";
     } else {
-      $("tmPayCaNhan").value = defaultPay("ca_nhan") || 0;
-      $("tmPayDoi").value = defaultPay("doi") || 0;
-      $("tmPayNhom").value = defaultPay("nhom") || 0;
+      renderPayRateInputs($("tmPayRates"), settings.default_pay || {});
     }
     $("teacherModal").classList.remove("hidden");
     $("tmName").focus();
@@ -900,14 +907,10 @@
     const id = $("tmId").value;
     const name = $("tmName").value.trim();
     if (!name) { const e = $("tmErr"); e.textContent = "Nhập tên giáo viên."; e.classList.remove("hidden"); return; }
-    const pr = {
-      ca_nhan: parseInt($("tmPayCaNhan").value, 10) || 0,
-      doi: parseInt($("tmPayDoi").value, 10) || 0,
-      nhom: parseInt($("tmPayNhom").value, 10) || 0,
-    };
+    const pr = readRateInputs($("tmPayRates"), "data-ptype");
     const payload = {
       full_name: name, phone: $("tmPhone").value.trim() || null,
-      pay_rates: pr, pay_per_session: pr.ca_nhan,
+      pay_rates: pr, pay_per_session: pr.ca_nhan || 0,
       user_id: $("tmAcc").value || null, note: $("tmNote").value.trim() || null,
     };
     $("tmSave").disabled = true;
@@ -949,27 +952,28 @@
     const { data, error } = await B.listSchedules({ from, to, teacherId: null });
     if (error) { $("salaryResult").innerHTML = '<div class="empty">Lỗi tải dữ liệu.</div>'; return; }
     const rows = {};
-    teachers.forEach((t) => (rows[t.id] = { t: t, name: t.full_name, ca_nhan: 0, doi: 0, nhom: 0, off: 0, planned: 0 }));
+    teachers.forEach((t) => (rows[t.id] = { t: t, name: t.full_name, counts: {}, off: 0, planned: 0 }));
     (data || []).forEach((s) => {
       const r = rows[s.teacher_id]; if (!r) return;
       r.planned++;
-      if (s.teacher_present === true) { const k = s.lesson_type || "ca_nhan"; r[k] = (r[k] || 0) + 1; }
+      if (s.teacher_present === true) { const k = s.lesson_type || "ca_nhan"; r.counts[k] = (r.counts[k] || 0) + 1; }
       else if (s.teacher_present === false) r.off++;
     });
     const list = Object.values(rows).sort((a, b) => a.name.localeCompare(b.name, "vi"));
     let grand = 0;
     const body = list.map((r) => {
-      const taught = r.ca_nhan + r.doi + r.nhom;
-      const amount = r.ca_nhan * teacherPayFor(r.t, "ca_nhan") + r.doi * teacherPayFor(r.t, "doi") + r.nhom * teacherPayFor(r.t, "nhom");
+      let taught = 0, amount = 0;
+      const cells = LESSON_TYPES.map((lt) => { const c = r.counts[lt.key] || 0; taught += c; amount += c * teacherPayFor(r.t, lt.key); return `<td class="num">${c}</td>`; }).join("");
       grand += amount;
-      return `<tr><td>${esc(r.name)}</td><td class="num">${r.ca_nhan}</td><td class="num">${r.doi}</td><td class="num">${r.nhom}</td>` +
-        `<td class="num">${taught}</td><td class="num">${r.off}</td><td class="num money total">${money(amount)}</td></tr>`;
+      return `<tr><td>${esc(r.name)}</td>${cells}<td class="num">${taught}</td><td class="num">${r.off}</td><td class="num money total">${money(amount)}</td></tr>`;
     }).join("");
+    const typeHeaders = LESSON_TYPES.map((lt) => `<th class="num">${lt.label}</th>`).join("");
+    const nCols = LESSON_TYPES.length;
     $("salaryResult").innerHTML =
       `<div class="table-wrap"><table class="tbl"><thead><tr>` +
-      `<th>Giáo viên</th><th class="num">Cá nhân</th><th class="num">Đôi</th><th class="num">Nhóm</th><th class="num">Tổng dạy</th><th class="num">Nghỉ</th><th class="num">Thành tiền</th>` +
-      `</tr></thead><tbody>${body || '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Không có dữ liệu.</td></tr>'}</tbody>` +
-      `<tfoot><tr><td colspan="6">TỔNG CHI LƯƠNG</td><td class="num money total">${money(grand)}</td></tr></tfoot></table></div>`;
+      `<th>Giáo viên</th>${typeHeaders}<th class="num">Tổng dạy</th><th class="num">Nghỉ</th><th class="num">Thành tiền</th>` +
+      `</tr></thead><tbody>${body || `<tr><td colspan="${nCols + 4}" style="text-align:center;color:var(--muted)">Không có dữ liệu.</td></tr>`}</tbody>` +
+      `<tfoot><tr><td colspan="${nCols + 3}">TỔNG CHI LƯƠNG</td><td class="num money total">${money(grand)}</td></tr></tfoot></table></div>`;
   }
 
   // =====================================================================
@@ -1115,15 +1119,19 @@
     $("leadMin").value = getLeadMin();
     if (window.Notification) $("notifPerm").checked = Notification.permission === "granted";
   }
-  function renderSettings() {
-    initSettingsUI();
+  function renderPricing() {
     const dp = settings.default_pay || {}, dt = settings.default_tuition || {};
-    $("dpCaNhan").value = dp.ca_nhan || 0; $("dpDoi").value = dp.doi || 0; $("dpNhom").value = dp.nhom || 0;
-    $("dtCaNhan").value = dt.ca_nhan || 0; $("dtDoi").value = dt.doi || 0; $("dtNhom").value = dt.nhom || 0;
+    $("pricingBody").innerHTML = LESSON_TYPES.map((t) =>
+      `<div class="price-row"><div class="pr-type">${t.label}</div>` +
+      `<label class="pr-field"><span>Lương GV/buổi</span><input type="number" min="0" step="1000" data-dp="${t.key}" value="${Number(dp[t.key]) || 0}" /></label>` +
+      `<label class="pr-field"><span>Học phí HS/buổi</span><input type="number" min="0" step="1000" data-dt="${t.key}" value="${Number(dt[t.key]) || 0}" /></label>` +
+      `</div>`
+    ).join("");
   }
+  function renderSettings() { initSettingsUI(); renderPricing(); }
   async function savePricing() {
-    const dp = { ca_nhan: parseInt($("dpCaNhan").value, 10) || 0, doi: parseInt($("dpDoi").value, 10) || 0, nhom: parseInt($("dpNhom").value, 10) || 0 };
-    const dt = { ca_nhan: parseInt($("dtCaNhan").value, 10) || 0, doi: parseInt($("dtDoi").value, 10) || 0, nhom: parseInt($("dtNhom").value, 10) || 0 };
+    const dp = readRateInputs($("pricingBody"), "data-dp");
+    const dt = readRateInputs($("pricingBody"), "data-dt");
     $("savePricing").disabled = true;
     const r1 = await B.saveSetting("default_pay", dp);
     const r2 = await B.saveSetting("default_tuition", dt);
