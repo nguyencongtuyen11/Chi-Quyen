@@ -400,7 +400,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 /* ===== BỘ CHỌN TUẦN (áp dụng TKB) ===== */
 #weekModal { z-index: 90; }
 .wk-controls { display: flex; gap: 8px; margin-bottom: 10px; }
-.wk-list { max-height: 48vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); padding: 6px; }
+.wk-list { position: relative; max-height: 48vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); padding: 6px; }
 .wk-month { margin: 10px 4px 4px; }
 .wk-month:first-child { margin-top: 2px; }
 .wk-month label { font-size: 12.5px; font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 8px; cursor: pointer; }
