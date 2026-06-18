@@ -118,12 +118,27 @@ svg { display: block; }
 .icon-btn svg { width: 18px; height: 18px; }
 .icon-btn:hover { color: var(--primary); border-color: var(--primary); }
 
-.account { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px 10px 6px 8px; }
+.account-wrap { position: relative; }
+.account { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px 10px 6px 8px; font-family: inherit; color: inherit; cursor: default; }
+.account.clickable { cursor: pointer; transition: .15s; }
+.account.clickable:hover { border-color: var(--primary); }
 .account .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--info-bg); color: var(--primary); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
-.account .who { line-height: 1.25; }
+.account .who { line-height: 1.25; text-align: left; }
 .account .who .name { font-size: 13px; font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account .who .role { font-size: 11.5px; color: var(--muted); }
+.acc-caret { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
 .badge-admin { font-size: 10px; font-weight: 800; color: #fff; background: var(--warn); padding: 1px 6px; border-radius: 999px; margin-left: 4px; letter-spacing: .3px; }
+
+/* dropdown danh sách giáo viên (admin) */
+.account-menu { position: absolute; top: calc(100% + 8px); right: 0; min-width: 250px; max-width: 320px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 8px; z-index: 70; max-height: 72vh; overflow-y: auto; }
+.account-menu .am-head { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; padding: 6px 10px 8px; }
+.am-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border-radius: 9px; border: none; background: none; color: var(--text); font-family: inherit; font-size: 13.5px; cursor: pointer; transition: .12s; }
+.am-item:hover { background: var(--bg-soft); }
+.am-item.active { background: var(--info-bg); }
+.am-item .am-av { width: 28px; height: 28px; border-radius: 8px; background: var(--info-bg); color: var(--primary); display: grid; place-items: center; font-weight: 700; font-size: 12px; flex-shrink: 0; }
+.am-item .am-info { min-width: 0; flex: 1; }
+.am-item .am-nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.am-item .am-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .content { padding: 18px max(14px, env(safe-area-inset-right)) 60px max(14px, env(safe-area-inset-left)); max-width: 1180px; width: 100%; }
 

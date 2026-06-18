@@ -267,6 +267,39 @@
   function applyRoleUI() {
     const admin = isAdmin();
     document.querySelectorAll(".admin-only").forEach((el) => { el.hidden = !admin; });
+    $("accCaret").hidden = !admin;
+    $("accountBtn").classList.toggle("clickable", admin);
+  }
+
+  // ---------- MENU TÀI KHOẢN: admin xem lịch dạy của giáo viên khác ----------
+  function renderAccountMenu() {
+    const cur = $("teacherFilter").value || "all";
+    let h = '<div class="am-head">Xem lịch dạy của giáo viên</div>';
+    h += amItem("all", "Tất cả giáo viên", "Xem toàn bộ lịch", cur === "all");
+    teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).forEach((t) => {
+      const acc = t.user_id && profilesById[t.user_id] ? (profilesById[t.user_id].email || profilesById[t.user_id].full_name) : "chưa gắn tài khoản";
+      h += amItem(t.id, t.full_name, acc, cur === t.id);
+    });
+    $("accountMenu").innerHTML = h;
+  }
+  function amItem(id, name, sub, active) {
+    return `<button class="am-item ${active ? "active" : ""}" data-amteacher="${id}"><div class="am-av">${esc(initials(name))}</div>` +
+      `<div class="am-info"><div class="am-nm">${esc(name)}</div><div class="am-sub">${esc(sub)}</div></div></button>`;
+  }
+  function toggleAccountMenu() {
+    if (!isAdmin()) return;
+    const m = $("accountMenu");
+    if (m.classList.contains("hidden")) { renderAccountMenu(); m.classList.remove("hidden"); }
+    else m.classList.add("hidden");
+  }
+  function closeAccountMenu() { $("accountMenu").classList.add("hidden"); }
+  function viewTeacherSchedule(id) {
+    fillTeacherFilter();
+    $("teacherFilter").value = id;
+    closeAccountMenu();
+    switchView("schedule");
+    const nm = id === "all" ? "tất cả giáo viên" : (teachersById[id] && teachersById[id].full_name) || "";
+    toast("Đang xem lịch của " + nm, "ok");
   }
 
   // =====================================================================
@@ -1066,6 +1099,14 @@
     ["authName", "authEmail", "authPass", "authNew", "authNew2"].forEach((id) => $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") $("authPrimary").click(); }));
     $("logoutBtn").addEventListener("click", async () => { await B.signOut(); });
 
+    // Menu tài khoản (admin xem lịch GV khác)
+    $("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
+    $("accountMenu").addEventListener("click", (e) => {
+      const it = e.target.closest("[data-amteacher]");
+      if (it) viewTeacherSchedule(it.getAttribute("data-amteacher"));
+    });
+    document.addEventListener("click", (e) => { if (!e.target.closest(".account-wrap")) closeAccountMenu(); });
+
     // Menu / sidebar
     $("menu").addEventListener("click", (e) => { const b = e.target.closest(".menu-item"); if (b) switchView(b.getAttribute("data-view")); });
     $("menuBtn").addEventListener("click", openSidebar);
@@ -1164,7 +1205,8 @@
     // ESC đóng modal/sidebar
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!$("modal").classList.contains("hidden")) closeScheduleModal();
+      if (!$("accountMenu").classList.contains("hidden")) closeAccountMenu();
+      else if (!$("modal").classList.contains("hidden")) closeScheduleModal();
       else if (!$("studentModal").classList.contains("hidden")) closeStudentModal();
       else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();
       else if ($("sidebar").classList.contains("open")) closeSidebar();

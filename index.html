@@ -60,12 +60,16 @@
         <h2 class="page-title" id="pageTitle">Hôm nay</h2>
         <div class="spacer"></div>
         <button class="icon-btn" id="themeBtn" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện"></button>
-        <div class="account">
-          <div class="avatar" id="accAvatar">?</div>
-          <div class="who">
-            <div class="name" id="accName">—</div>
-            <div class="role" id="accRole"></div>
-          </div>
+        <div class="account-wrap">
+          <button class="account" id="accountBtn" type="button">
+            <div class="avatar" id="accAvatar">?</div>
+            <div class="who">
+              <div class="name" id="accName">—</div>
+              <div class="role" id="accRole"></div>
+            </div>
+            <svg class="acc-caret" id="accCaret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="account-menu hidden" id="accountMenu"></div>
         </div>
         <button class="icon-btn" id="logoutBtn" title="Đăng xuất" aria-label="Đăng xuất">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
