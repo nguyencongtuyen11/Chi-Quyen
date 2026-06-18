@@ -997,6 +997,82 @@
       `<tfoot><tr><td colspan="${nCols + 3}">TỔNG CHI LƯƠNG</td><td class="num money total">${money(grand)}</td></tr></tfoot></table></div>`;
   }
 
+  // Xuất PDF bảng lương (mở cửa sổ in -> Lưu thành PDF)
+  async function exportSalaryPDF() {
+    const from = dmyToYmd($("salFrom").value), to = dmyToYmd($("salTo").value);
+    if (!from || !to) return toast("Nhập khoảng ngày hợp lệ (dd/mm/yyyy).", "err");
+    if (from > to) return toast("Ngày bắt đầu phải trước ngày kết thúc.", "err");
+    const { data, error } = await B.listSchedules({ from, to, teacherId: null });
+    if (error) return toast("Lỗi tải dữ liệu: " + error.message, "err");
+    const taught = (data || []).filter((s) => s.teacher_present === true);
+    const byT = {};
+    taught.forEach((s) => { (byT[s.teacher_id] = byT[s.teacher_id] || []).push(s); });
+
+    const perT = teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => {
+      const ss = (byT[t.id] || []).slice().sort((a, b) => (a.schedule_date + a.start_time).localeCompare(b.schedule_date + b.start_time));
+      const counts = {}; let amt = 0;
+      ss.forEach((s) => { const k = s.lesson_type || "ca_nhan"; counts[k] = (counts[k] || 0) + 1; amt += teacherPayFor(t, k); });
+      return { t: t, ss: ss, counts: counts, amt: amt };
+    });
+    const grand = perT.reduce((g, x) => g + x.amt, 0);
+    const now = new Date();
+
+    const typeHead = LESSON_TYPES.map((lt) => `<th class="num">${lt.label}</th>`).join("");
+    const summaryRows = perT.map((x) => {
+      const cells = LESSON_TYPES.map((lt) => `<td class="num">${x.counts[lt.key] || 0}</td>`).join("");
+      return `<tr><td>${esc(x.t.full_name)}</td>${cells}<td class="num">${x.ss.length}</td><td class="num">${money(x.amt)}</td></tr>`;
+    }).join("");
+
+    const sections = perT.filter((x) => x.ss.length).map((x) => {
+      const rows = x.ss.map((s) => {
+        const d = parseYmd(s.schedule_date);
+        return `<tr><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
+          `<td>${esc(s.subject)}</td><td>${esc(s.class_name || "")}</td><td>${lessonTypeLabel(s.lesson_type)}</td>` +
+          `<td class="num">${money(teacherPayFor(x.t, s.lesson_type || "ca_nhan"))}</td></tr>`;
+      }).join("");
+      const meta = [x.t.specialty ? "Chuyên môn: " + esc(x.t.specialty) : "", "Tổng buổi dạy: " + x.ss.length].filter(Boolean).join(" · ");
+      return `<div class="section"><h2 class="t-name">${esc(x.t.full_name)}</h2><div class="t-meta">${meta}</div>` +
+        `<table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class="num">Đơn giá</th></tr></thead>` +
+        `<tbody>${rows}</tbody></table><div class="subtotal">Cộng lương <b>${esc(x.t.full_name)}</b>: ${money(x.amt)}</div></div>`;
+    }).join("");
+
+    const logo = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 18V5l12-2v13"/><path d="M9 9l12-2"/></svg>';
+    const css = "*{box-sizing:border-box;}html,body{background:#fff;}body{font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;color:#111;margin:0;padding:22px;font-size:12.5px;}" +
+      ".doc-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #333;padding-bottom:12px;}" +
+      ".doc-logo{width:46px;height:46px;border-radius:10px;background:#6d63ff;display:grid;place-items:center;flex-shrink:0;}.doc-logo svg{width:26px;height:26px;}" +
+      ".center-name{font-size:15px;font-weight:800;letter-spacing:.3px;}.center-sub{font-size:11px;color:#666;}" +
+      "h1.report-title{text-align:center;font-size:18px;margin:14px 0 2px;text-transform:uppercase;}" +
+      ".report-range{text-align:center;font-size:12.5px;color:#333;}.report-gen{text-align:center;font-size:10.5px;color:#888;margin-bottom:16px;}" +
+      "table{width:100%;border-collapse:collapse;margin-bottom:6px;}th,td{border:1px solid #bbb;padding:6px 8px;text-align:left;}" +
+      "th{background:#eef0fb;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;}td.num,th.num{text-align:right;white-space:nowrap;}" +
+      "tfoot td{font-weight:800;background:#f6f6fa;}h2.section-title{font-size:14px;margin:18px 0 6px;}" +
+      "h2.t-name{font-size:13.5px;margin:16px 0 4px;padding:6px 10px;background:#eef0fb;border-left:4px solid #6d63ff;}" +
+      ".t-meta{font-size:11px;color:#555;margin-bottom:6px;}.subtotal{text-align:right;font-size:12.5px;margin:4px 0 2px;}" +
+      ".grand{margin-top:16px;padding:11px 14px;background:#eef0fb;border:1px solid #c9c9e6;border-radius:8px;font-size:14.5px;font-weight:800;display:flex;justify-content:space-between;}" +
+      ".sign-row{display:flex;justify-content:space-around;margin-top:34px;text-align:center;font-size:12px;}.sign-row .col{width:45%;}" +
+      ".sign-row .role{font-weight:700;}.sign-row .hint{font-size:10px;color:#888;font-style:italic;}.sign-row .space{height:58px;}" +
+      ".section{page-break-inside:avoid;}@page{size:A4;margin:14mm;}";
+    const html = "<!doctype html><html lang='vi'><head><meta charset='utf-8'><title>Bảng lương OPENMUSIC</title><style>" + css + "</style></head><body>" +
+      "<div class='doc-head'><div class='doc-logo'>" + logo + "</div><div><div class='center-name'>TRUNG TÂM NGHỆ THUẬT OPENMUSIC</div><div class='center-sub'>Bảng kê lương giáo viên theo buổi dạy</div></div></div>" +
+      "<h1 class='report-title'>Bảng tính lương giáo viên</h1>" +
+      "<div class='report-range'>Kỳ lương: từ <b>" + dmy(parseYmd(from)) + "</b> đến <b>" + dmy(parseYmd(to)) + "</b></div>" +
+      "<div class='report-gen'>Lập lúc " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + " ngày " + dmy(now) + "</div>" +
+      "<h2 class='section-title'>1. Tổng hợp</h2>" +
+      "<table><thead><tr><th>Giáo viên</th>" + typeHead + "<th class='num'>Tổng buổi</th><th class='num'>Thành tiền</th></tr></thead>" +
+      "<tbody>" + summaryRows + "</tbody>" +
+      "<tfoot><tr><td colspan='" + (LESSON_TYPES.length + 2) + "'>TỔNG CHI LƯƠNG</td><td class='num'>" + money(grand) + "</td></tr></tfoot></table>" +
+      "<div class='grand'><span>TỔNG CHI LƯƠNG KỲ NÀY</span><span>" + money(grand) + "</span></div>" +
+      (sections ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2>" + sections : "") +
+      "<div class='sign-row'><div class='col'><div class='role'>NGƯỜI LẬP BẢNG</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div>" +
+      "<div class='col'><div class='role'>GIÁM ĐỐC TRUNG TÂM</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
+      "<scr" + "ipt>window.onload=function(){setTimeout(function(){window.print();},300);};</scr" + "ipt>" +
+      "</body></html>";
+
+    const w = window.open("", "_blank");
+    if (!w) { toast("Trình duyệt đang chặn cửa sổ in. Hãy cho phép popup rồi thử lại.", "err"); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   // =====================================================================
   //  HỌC PHÍ HỌC SINH (admin)
   // =====================================================================
@@ -1292,6 +1368,7 @@
     // Lương
     $("salMonthBtn").addEventListener("click", () => { setSalaryMonth(); runSalary(); });
     $("salRun").addEventListener("click", runSalary);
+    $("salPdf").addEventListener("click", exportSalaryPDF);
 
     // Học phí
     $("tuitionSearch").addEventListener("input", renderTuition);
