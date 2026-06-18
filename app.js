@@ -941,7 +941,8 @@
           (owed > 0 ? row("Còn thiếu", `<span style="color:var(--bad)">${money(owed)}</span>`) : row("Học phí", '<span style="color:var(--good)">Đã đóng đủ</span>')) +
         `</div>` +
         `<div class="progress ${pcls}"><span style="width:${Math.round(p.ratio * 100)}%"></span></div>` +
-        `<div class="ic-acts"><button class="btn btn-sm" data-stpay="${s.id}">💳 Học phí</button>` +
+        `<div class="ic-acts"><button class="btn btn-sm" data-stpdf="${s.id}">🖨 Lịch học</button>` +
+        `<button class="btn btn-sm" data-stpay="${s.id}">💳 Học phí</button>` +
         `<button class="btn btn-sm" data-stedit="${s.id}">${ICON_EDIT} Sửa</button>` +
         `<button class="btn btn-sm danger" data-stdel="${s.id}">${ICON_DEL} Xóa</button></div>` +
       `</div>`;
@@ -1076,6 +1077,65 @@
     renderPaymentSummary(studentsById[sid]); renderPaymentHistory(sid);
     if (currentView === "students") renderStudents();
     toast("Đã xóa.", "ok");
+  }
+
+  // Xuất PDF lịch sử đi học của 1 học sinh (cho phụ huynh xem)
+  async function exportStudentAttendancePDF(studentId) {
+    const st = studentsById[studentId]; if (!st) return toast("Không tìm thấy học sinh.", "err");
+    const { data: atts, error } = await B.listAttendanceByStudent(studentId);
+    if (error) return toast("Lỗi tải dữ liệu: " + error.message, "err");
+    const ids = (atts || []).map((a) => a.schedule_id);
+    const { data: scheds } = await B.listSchedulesByIds(ids);
+    const schById = {}; (scheds || []).forEach((s) => (schById[s.id] = s));
+    const todayY = ymd(startOfToday());
+    const rows = (atts || []).map((a) => { const s = schById[a.schedule_id]; return s ? { s: s, a: a } : null; }).filter(Boolean)
+      .filter((x) => x.s.schedule_date <= todayY)
+      .sort((x, y) => (x.s.schedule_date + x.s.start_time).localeCompare(y.s.schedule_date + y.s.start_time));
+    let present = 0, absent = 0, none = 0;
+    rows.forEach((x) => { if (x.a.present === true) present++; else if (x.a.present === false) absent++; else none++; });
+    const detailRows = rows.map((x, i) => {
+      const s = x.s, d = parseYmd(s.schedule_date);
+      const status = x.a.present === true ? "✓ Có mặt" : x.a.present === false ? "✕ Vắng" : "• Chưa điểm danh";
+      return `<tr><td class='num'>${i + 1}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td></tr>`;
+    }).join("");
+    const paid = paidByStudent[studentId] || { amount: 0, sessions: 0 };
+    const total = st.total_sessions || 0, remaining = Math.max(0, total - present);
+    const now = new Date();
+    const logoUrl = new URL("logo-wordmark.png", location.href).href;
+    const teacherName = (teachersById[st.teacher_id] && teachersById[st.teacher_id].full_name) || "—";
+
+    const css = "*{box-sizing:border-box;}html,body{background:#fff;}body{font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;color:#111;margin:0;padding:22px;font-size:12.5px;}" +
+      ".doc-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #333;padding-bottom:12px;}" +
+      ".doc-logo-img{height:52px;width:auto;display:block;border-radius:6px;}" +
+      ".center-name{font-size:15px;font-weight:800;letter-spacing:.3px;}.center-sub{font-size:11px;color:#666;}" +
+      "h1.report-title{text-align:center;font-size:18px;margin:14px 0 2px;text-transform:uppercase;}" +
+      ".report-gen{text-align:center;font-size:10.5px;color:#888;margin-bottom:14px;}" +
+      ".info{margin:8px 0 10px;font-size:13px;line-height:1.8;}.info .lbl{color:#666;display:inline-block;min-width:160px;}" +
+      ".sumline{margin:6px 0 12px;padding:10px 12px;background:#eef0fb;border:1px solid #c9c9e6;border-radius:8px;font-size:13px;font-weight:700;}" +
+      "table{width:100%;border-collapse:collapse;margin-bottom:6px;}th,td{border:1px solid #bbb;padding:6px 8px;text-align:left;}" +
+      "th{background:#eef0fb;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;}td.num,th.num{text-align:right;white-space:nowrap;}" +
+      ".sign-row{display:flex;justify-content:flex-end;margin-top:30px;text-align:center;font-size:12px;}.sign-row .col{width:46%;}" +
+      ".sign-row .role{font-weight:700;}.sign-row .hint{font-size:10px;color:#888;font-style:italic;}.sign-row .space{height:56px;}" +
+      "@page{size:A4;margin:14mm;}";
+    const html = "<!doctype html><html lang='vi'><head><meta charset='utf-8'><title>Lịch học - " + esc(st.full_name) + "</title><style>" + css + "</style></head><body>" +
+      "<div class='doc-head'><img class='doc-logo-img' src='" + logoUrl + "' alt='OpenMusic'><div><div class='center-name'>TRUNG TÂM NGHỆ THUẬT OPENMUSIC</div><div class='center-sub'>Bảng theo dõi buổi học của học sinh</div></div></div>" +
+      "<h1 class='report-title'>Bảng theo dõi buổi học</h1>" +
+      "<div class='report-gen'>Lập lúc " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + " ngày " + dmy(now) + "</div>" +
+      "<div class='info'><div><span class='lbl'>Họ và tên học sinh:</span> <b>" + esc(st.full_name) + "</b></div>" +
+      "<div><span class='lbl'>Môn / Loại lớp:</span> " + esc(st.subject || "—") + " · " + lessonTypeLabel(st.lesson_type) + "</div>" +
+      "<div><span class='lbl'>Giáo viên phụ trách:</span> " + esc(teacherName) + "</div>" +
+      "<div><span class='lbl'>Khóa học:</span> " + total + " buổi" + (st.start_date ? " · bắt đầu " + ymdToDmy(st.start_date) : "") + "</div>" +
+      "<div><span class='lbl'>Học phí đã đóng:</span> " + money(paid.amount) + (paid.sessions ? " · " + paid.sessions + " buổi" : "") + "</div></div>" +
+      "<div class='sumline'>Đã học: " + present + " buổi · Vắng: " + absent + " · Chưa điểm danh: " + none + " · Còn lại: " + remaining + "/" + total + " buổi</div>" +
+      "<table><thead><tr><th class='num'>STT</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th></tr></thead>" +
+      "<tbody>" + (detailRows || "<tr><td colspan='8' style='text-align:center;color:#888'>Chưa có buổi học nào.</td></tr>") + "</tbody></table>" +
+      "<div class='sign-row'><div class='col'><div class='role'>XÁC NHẬN CỦA TRUNG TÂM</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
+      "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
+      "</body></html>";
+
+    const w = window.open("", "_blank");
+    if (!w) { toast("Trình duyệt đang chặn cửa sổ in. Hãy cho phép popup rồi thử lại.", "err"); return; }
+    w.document.open(); w.document.write(html); w.document.close();
   }
 
   // =====================================================================
@@ -1623,8 +1683,9 @@
     $("addStudentBtn").addEventListener("click", () => openStudentModal(null));
     $("studentSearch").addEventListener("input", renderStudents);
     $("studentList").addEventListener("click", (e) => {
-      const ed = e.target.closest("[data-stedit]"), de = e.target.closest("[data-stdel]"), pa = e.target.closest("[data-stpay]");
-      if (pa) openPaymentModal(pa.getAttribute("data-stpay"));
+      const ed = e.target.closest("[data-stedit]"), de = e.target.closest("[data-stdel]"), pa = e.target.closest("[data-stpay]"), pf = e.target.closest("[data-stpdf]");
+      if (pf) exportStudentAttendancePDF(pf.getAttribute("data-stpdf"));
+      else if (pa) openPaymentModal(pa.getAttribute("data-stpay"));
       else if (ed) openStudentModal(studentsById[ed.getAttribute("data-stedit")]);
       else if (de) deleteStudent(de.getAttribute("data-stdel"));
     });

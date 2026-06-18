@@ -105,6 +105,8 @@
         if (!ids || !ids.length) return { data: [], error: null };
         return sb.from("attendance").select("*").in("schedule_id", ids);
       },
+      listAttendanceByStudent(studentId) { return sb.from("attendance").select("*").eq("student_id", studentId); },
+      async listSchedulesByIds(ids) { if (!ids || !ids.length) return { data: [], error: null }; return sb.from("schedules").select("*").in("id", ids); },
       setAttendance(scheduleId, studentId, present, byUserId) {
         return sb.from("attendance").upsert(
           { schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId },
@@ -341,6 +343,8 @@
         ids = ids || [];
         return ok(store.attendance.filter((a) => ids.includes(a.schedule_id)).map((a) => Object.assign({}, a)));
       },
+      async listAttendanceByStudent(studentId) { return ok(store.attendance.filter((a) => a.student_id === studentId).map((a) => Object.assign({}, a))); },
+      async listSchedulesByIds(ids) { ids = ids || []; return ok(store.schedules.filter((s) => ids.includes(s.id)).map((s) => Object.assign({}, s))); },
       async setAttendance(scheduleId, studentId, present, byUserId) {
         let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
         if (a) { a.present = present; a.marked_at = nowISO(); a.marked_by = byUserId; }
