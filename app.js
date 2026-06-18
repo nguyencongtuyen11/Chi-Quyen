@@ -7,6 +7,12 @@
 
   const B = window.Backend;
 
+  // ===== CHẾ ĐỘ MIGRATION (nhập dữ liệu cũ) =====
+  //  true  = cho phép điểm danh / sửa buổi trong QUÁ KHỨ cho mọi người (để nhập liệu cũ).
+  //  false = chỉ thao tác từ HÔM NAY trở đi; riêng ADMIN vẫn luôn được sửa quá khứ.
+  //  Nhập xong dữ liệu cũ -> đổi thành false rồi push lại để khóa quá khứ với giáo viên.
+  const MIGRATION_MODE = true;
+
   // ---------- STATE ----------
   let user = null;
   let currentUid = null;
@@ -16,6 +22,7 @@
   let students = [], studentsById = {};
   let presentByStudent = {};        // student_id -> số buổi đã có mặt (toàn thời gian)
   let viewDate = startOfToday();
+  let attDate = startOfToday();   // ngày đang điểm danh (mặc định hôm nay)
   let currentView = "today";
   let recovering = false, resetDone = false;
 
@@ -353,16 +360,26 @@
   // =====================================================================
   let todayScheds = [], todayAtt = [];
 
+  // Được phép điểm danh/sửa ngày đang xem không?
+  function canEditAttendance() {
+    if (isAdmin() || MIGRATION_MODE) return true;        // admin luôn được; migration mở cho tất cả
+    return ymd(attDate) >= ymd(startOfToday());           // còn lại: chỉ từ hôm nay trở đi
+  }
+  function setAttDate(d) { attDate = new Date(d); attDate.setHours(0, 0, 0, 0); loadToday(); }
+
   async function loadToday() {
-    const today = startOfToday();
-    $("todayDate").textContent = `${DOW[today.getDay()]}, ${dmy(today)}`;
+    const isToday = ymd(attDate) === ymd(startOfToday());
+    $("todayTitle").textContent = isToday ? "Lớp học hôm nay" : "Lớp học ngày " + dmy(attDate);
+    $("todayDate").textContent = `${DOW[attDate.getDay()]}, ${dmy(attDate)}`;
+    $("attDatePicker").value = dmy(attDate);
+    $("migrationBanner").hidden = !(MIGRATION_MODE && ymd(attDate) < ymd(startOfToday()));
     const tf = scheduleTeacherFilter();
     if (tf === "__none__") {
       $("todayList").innerHTML = '<div class="empty"><div class="big">🔗</div>Tài khoản của bạn chưa được gắn vào giáo viên nào.<br>Hãy nhờ Admin gắn ở mục “Giáo viên”.</div>';
       $("todayStats").innerHTML = "";
       return;
     }
-    const t = ymd(today);
+    const t = ymd(attDate);
     const { data: scheds } = await B.listSchedules({ from: t, to: t, teacherId: tf });
     todayScheds = scheds || [];
     const ids = todayScheds.map((s) => s.id);
@@ -384,15 +401,17 @@
       chip(none, "Chưa ĐD", "warn");
 
     if (!todayScheds.length) {
-      $("todayList").innerHTML = '<div class="empty"><div class="big">🎵</div>Hôm nay không có lớp nào.</div>';
+      const isToday = ymd(attDate) === ymd(startOfToday());
+      $("todayList").innerHTML = `<div class="empty"><div class="big">🎵</div>${isToday ? "Hôm nay" : "Ngày này"} không có lớp nào.</div>`;
       return;
     }
     const now = new Date();
-    $("todayList").innerHTML = todayScheds.map((s) => classCard(s, now)).join("");
+    const locked = !canEditAttendance();
+    $("todayList").innerHTML = todayScheds.map((s) => classCard(s, now, locked)).join("");
   }
   function chip(n, l, cls) { return `<div class="stat-chip ${cls || ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
 
-  function classCard(s, now) {
+  function classCard(s, now, locked) {
     const rows = attFor(s.id);
     const endDt = new Date(`${s.schedule_date}T${s.end_time}`);
     const isPast = endDt < now;
@@ -429,7 +448,7 @@
       addable.map((st) => `<option value="${st.id}">${esc(st.full_name)}${st.subject ? " · " + esc(st.subject) : ""}</option>`).join("") +
       `</select></div></div>`;
 
-    return `<div class="class-card ${isPast ? "is-past" : ""}">` +
+    return `<div class="class-card ${isPast ? "is-past" : ""} ${locked ? "locked" : ""}">` +
       `<div class="cc-head">` +
         `<span class="cc-time">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>` +
         `<div class="cc-info"><div class="cc-subj">${esc(s.subject)}</div>` +
@@ -442,6 +461,7 @@
   }
 
   async function markStudent(scheduleId, studentId, present) {
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
     // bấm lại nút đang bật -> bỏ chọn (về "chưa điểm danh")
     const newVal = (cur && cur.present === present) ? null : present;
@@ -452,6 +472,7 @@
     renderToday();
   }
   async function markTeacher(scheduleId, present) {
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const s = todayScheds.find((x) => x.id === scheduleId);
     const newVal = (s && s.teacher_present === present) ? null : present;
     const { error } = await B.updateSchedule(scheduleId, { teacher_present: newVal, teacher_marked_at: new Date().toISOString() });
@@ -461,6 +482,7 @@
   }
   async function addStudentToClass(scheduleId, studentId) {
     if (!studentId) return;
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const { error } = await B.setAttendance(scheduleId, studentId, null, user.id);
     if (error) return toast("Lỗi: " + error.message, "err");
     todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: null });
@@ -468,6 +490,7 @@
     toast("Đã thêm học sinh vào lớp.", "ok");
   }
   async function removeStudentFromClass(scheduleId, studentId) {
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const { error } = await B.removeAttendance(scheduleId, studentId);
     if (error) return toast("Lỗi: " + error.message, "err");
     todayAtt = todayAtt.filter((a) => !(a.schedule_id === scheduleId && a.student_id === studentId));
@@ -622,7 +645,8 @@
       const preset = { sang: ["08:00", "09:30"], chieu: ["14:00", "15:30"], toi: ["18:30", "20:00"] }[presetBuoi] || ["14:00", "15:30"];
       $("fStart").value = preset[0]; $("fEnd").value = preset[1];
     }
-    $("fDateNative").min = ymd(startOfToday());
+    // Admin / chế độ migration được phép xếp lịch (và điểm danh) cho ngày quá khứ
+    $("fDateNative").min = (isAdmin() || MIGRATION_MODE) ? "" : ymd(startOfToday());
 
     // giáo viên phụ trách
     const ownerSel = $("fOwner"); ownerSel.innerHTML = "";
@@ -1142,6 +1166,11 @@
       const sel = e.target.closest("[data-addsel]");
       if (sel) { addStudentToClass(sel.getAttribute("data-addsel"), sel.value); }
     });
+    // Hôm nay — điều hướng ngày điểm danh
+    document.querySelectorAll("[data-attnav]").forEach((btn) =>
+      btn.addEventListener("click", () => setAttDate(addDays(attDate, parseInt(btn.getAttribute("data-attnav"), 10)))));
+    $("attTodayBtn").addEventListener("click", () => setAttDate(startOfToday()));
+    $("attDatePicker").addEventListener("change", () => { const y = dmyToYmd($("attDatePicker").value); if (y) setAttDate(parseYmd(y)); });
 
     // Modal buổi học
     $("modalClose").addEventListener("click", closeScheduleModal);
@@ -1198,7 +1227,7 @@
     $("resetDemo").addEventListener("click", () => { if (confirm("Đặt lại toàn bộ dữ liệu DEMO về ban đầu?")) { if (B.resetDemo) B.resetDemo(); location.reload(); } });
 
     // Mask ngày/giờ + nút lịch
-    ["fDate", "datePicker", "smStart", "salFrom", "salTo"].forEach((id) => maskDate($(id)));
+    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker"].forEach((id) => maskDate($(id)));
     ["fStart", "fEnd"].forEach((id) => maskTime($(id)));
     document.querySelectorAll(".cal-btn").forEach(wireCal);
 

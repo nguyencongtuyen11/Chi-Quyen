@@ -193,7 +193,13 @@ svg { display: block; }
 /* ===================================================================
    HÔM NAY & ĐIỂM DANH
    =================================================================== */
+.att-datenav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.att-datenav .att-date-wrap { width: auto; }
+.att-datenav .datepick { min-width: 150px; text-align: center; font-weight: 700; }
+.migration-banner { background: var(--sang-bg); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); padding: 10px 14px; border-radius: 12px; font-size: 13px; margin-bottom: 14px; }
 .today-list { display: flex; flex-direction: column; gap: 14px; }
+.class-card.locked .att-actions, .class-card.locked .cc-tpresent .tp-toggle, .class-card.locked .cc-foot { opacity: .45; pointer-events: none; }
+.class-card.locked .att-status { opacity: 1; }
 .class-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
 .class-card.is-past { opacity: .92; }
 .cc-head { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: var(--bg-soft); border-bottom: 1px solid var(--border); flex-wrap: wrap; }

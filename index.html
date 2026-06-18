@@ -83,6 +83,17 @@
 
         <!-- ============ VIEW: HÔM NAY & ĐIỂM DANH ============ -->
         <section class="view" id="view-today">
+          <div class="att-datenav">
+            <button class="btn" data-attnav="-1">‹ Hôm trước</button>
+            <div class="date-wrap att-date-wrap">
+              <input type="text" id="attDatePicker" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" title="Chọn ngày điểm danh" />
+              <button type="button" class="cal-btn" data-cal="attDatePicker" aria-label="Chọn ngày">📅</button>
+              <input type="date" id="attDatePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
+            </div>
+            <button class="btn" data-attnav="1">Hôm sau ›</button>
+            <button class="btn" id="attTodayBtn">Hôm nay</button>
+          </div>
+          <div class="migration-banner" id="migrationBanner" hidden>🛠️ Đang mở điểm danh cho các buổi <b>quá khứ</b> (chế độ migration dữ liệu).</div>
           <div class="view-head">
             <div>
               <h3 id="todayTitle">Lớp học hôm nay</h3>
