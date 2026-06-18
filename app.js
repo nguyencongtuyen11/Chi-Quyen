@@ -787,13 +787,18 @@
     $("wkSub").textContent = opts.subtitle || "";
     $("wkCopyRow").style.display = opts.showCopy === false ? "none" : "";
     $("wkCopyStudents").checked = true;
-    const N = 44;
+    const N = opts.weeks || 56;
     let ws = startOfWeek(opts.fromWeekStart || addDays(startOfWeek(viewDate), 7));
+    const excludeY = opts.excludeWeekStart ? ymd(startOfWeek(opts.excludeWeekStart)) : null;
+    const todayY = ymd(startOfToday());
     let html = "", curMon = null;
     for (let i = 0; i < N; i++) {
       const we = addDays(ws, 6), monKey = ws.getFullYear() + "-" + ws.getMonth();
       if (monKey !== curMon) { curMon = monKey; html += `<div class="wk-month"><label><input type="checkbox" class="wk-mon" data-mon="${monKey}"/> Tháng ${ws.getMonth() + 1}/${ws.getFullYear()}</label></div>`; }
-      html += `<label class="wk-item" data-mon="${monKey}"><input type="checkbox" class="wk-week" value="${ymd(ws)}"/> Tuần ${dmy(ws)} – ${dmy(we)}</label>`;
+      if (ymd(ws) !== excludeY) {
+        const past = ymd(ws) < todayY ? ' <span class="wk-past">(đã qua)</span>' : "";
+        html += `<label class="wk-item" data-mon="${monKey}"><input type="checkbox" class="wk-week" value="${ymd(ws)}"/> Tuần ${dmy(ws)} – ${dmy(we)}${past}</label>`;
+      }
       ws = addDays(ws, 7);
     }
     $("wkList").innerHTML = html;
@@ -1403,10 +1408,12 @@
     // Áp dụng cả tuần cho các tuần sau
     $("applyWeekBtn").addEventListener("click", () => {
       const ws = startOfWeek(viewDate);
+      const monthStart = startOfWeek(new Date(ws.getFullYear(), ws.getMonth(), 1));
       openWeekPicker({
-        title: "Áp dụng lịch tuần này cho các tuần sau",
-        subtitle: `Sao chép toàn bộ lớp trong tuần ${dmy(ws)} – ${dmy(addDays(ws, 6))} sang các tuần được chọn (cùng thứ, cùng giờ, cùng giáo viên). Tuần đã có lịch sẽ được bỏ qua để không trùng.`,
-        fromWeekStart: addDays(ws, 7),
+        title: "Áp dụng lịch tuần này cho các tuần khác",
+        subtitle: `Sao chép toàn bộ lớp trong tuần ${dmy(ws)} – ${dmy(addDays(ws, 6))} sang các tuần được chọn — gồm cả tuần TRƯỚC (để backfill điểm danh/lương) lẫn tuần SAU. Cùng thứ, giờ, giáo viên. Tuần đã có lịch sẽ được bỏ qua.`,
+        fromWeekStart: monthStart,
+        excludeWeekStart: ws,
         onApply: (weeks, copy) => applyWeekToWeeks(ws, weeks, copy),
       });
     });
@@ -1428,10 +1435,12 @@
     });
     $("fRepeatPick").addEventListener("click", () => {
       const base = parseYmd(dmyToYmd($("fDate").value) || ymd(viewDate));
+      const monthStart = startOfWeek(new Date(base.getFullYear(), base.getMonth(), 1));
       openWeekPicker({
-        title: "Áp dụng buổi học cho các tuần sau",
-        subtitle: "Buổi sẽ được tạo cùng thứ trong mỗi tuần bạn chọn (kèm học sinh nếu tick).",
-        fromWeekStart: addDays(startOfWeek(base), 7),
+        title: "Áp dụng buổi học cho các tuần khác",
+        subtitle: "Buổi sẽ được tạo cùng thứ trong mỗi tuần bạn chọn — gồm cả tuần trước & sau (kèm học sinh nếu tick).",
+        fromWeekStart: monthStart,
+        excludeWeekStart: startOfWeek(base),
         onApply: (weeks, copy) => { modalApplyWeeks = weeks; modalApplyCopy = copy; $("fRepeatInfo").textContent = "Đã chọn " + weeks.length + " tuần."; },
       });
     });

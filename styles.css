@@ -407,6 +407,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .wk-item { display: flex; align-items: center; gap: 9px; padding: 7px 10px 7px 22px; border-radius: 8px; font-size: 13.5px; cursor: pointer; }
 .wk-item:hover { background: var(--card); }
 .wk-list input[type="checkbox"], .wk-month input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); }
+.wk-past { color: var(--warn); font-size: 11px; font-weight: 700; }
 
 /* ô ngày dd/mm/yyyy + nút lịch */
 .date-wrap { position: relative; display: inline-flex; align-items: center; width: 100%; }
