@@ -37,6 +37,7 @@ create unique index if not exists teachers_user_uidx on public.teachers(user_id)
 alter table public.teachers add column if not exists phone           text;
 alter table public.teachers add column if not exists pay_per_session numeric not null default 0;
 alter table public.teachers add column if not exists note            text;
+alter table public.teachers add column if not exists pay_rates       jsonb not null default '{}'::jsonb;
 
 -- ---------------------------------------------------------------------
 --  3) STUDENTS — học sinh + thông tin khóa học
@@ -52,6 +53,7 @@ create table if not exists public.students (
   teacher_id          uuid references public.teachers (id) on delete set null,
   total_sessions      int  not null default 12,
   tuition_per_session numeric not null default 0,
+  lesson_type         text not null default 'ca_nhan', -- ca_nhan / doi / nhom
   start_date          date,
   status              text not null default 'active', -- active / completed / paused
   note                text,
@@ -59,6 +61,7 @@ create table if not exists public.students (
 );
 alter table public.students enable row level security;
 create index if not exists students_teacher_idx on public.students (teacher_id);
+alter table public.students add column if not exists lesson_type text not null default 'ca_nhan';
 
 -- ---------------------------------------------------------------------
 --  4) SCHEDULES — lịch học theo ngày, gắn vào teachers (roster)
@@ -73,6 +76,7 @@ create table if not exists public.schedules (
   start_time       time not null,
   end_time         time not null,
   room             text,
+  lesson_type      text not null default 'ca_nhan',  -- ca_nhan / doi / nhom (tính lương & học phí)
   teacher_name     text,                            -- tên GV (denormalized, để hiển thị)
   teacher_present  boolean,                          -- điểm danh GV
   teacher_marked_at timestamptz,
@@ -86,6 +90,7 @@ create index if not exists schedules_teacher_idx on public.schedules (teacher_id
 create index if not exists schedules_date_idx    on public.schedules (schedule_date, start_time);
 alter table public.schedules add column if not exists teacher_present   boolean;
 alter table public.schedules add column if not exists teacher_marked_at timestamptz;
+alter table public.schedules add column if not exists lesson_type       text not null default 'ca_nhan';
 
 -- ---------------------------------------------------------------------
 --  5) ATTENDANCE — điểm danh HỌC SINH trong từng buổi học
@@ -230,6 +235,21 @@ create policy "attendance_upd_own_admin" on public.attendance for update to auth
   with check ( public.is_admin() or public.owns_schedule(schedule_id) );
 create policy "attendance_del_own_admin" on public.attendance for delete to authenticated
   using ( public.is_admin() or public.owns_schedule(schedule_id) );
+
+-- ---------------------------------------------------------------------
+--  7b) APP_SETTINGS — bảng giá / cấu hình mặc định (admin thiết lập 1 lần)
+-- ---------------------------------------------------------------------
+create table if not exists public.app_settings (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_settings enable row level security;
+drop policy if exists "settings_select_all"  on public.app_settings;
+drop policy if exists "settings_admin_write"  on public.app_settings;
+create policy "settings_select_all" on public.app_settings for select to authenticated using (true);
+create policy "settings_admin_write" on public.app_settings for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
 
 -- =====================================================================
 --  8) CẤP QUYỀN ADMIN: sau khi tài khoản đã ĐĂNG KÝ, chạy (đổi email):

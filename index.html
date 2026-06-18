@@ -168,7 +168,7 @@
             <div class="spacer"></div>
             <button class="btn primary" id="salRun">Tính lương</button>
           </div>
-          <p class="hint">Lương = <b>số buổi đã dạy</b> (giáo viên được điểm danh “có dạy”) × <b>lương mỗi buổi</b>. Đặt lương mỗi buổi trong mục Giáo viên.</p>
+          <p class="hint">Lương = số buổi đã dạy × <b>đơn giá theo loại lớp</b> (cá nhân / đôi / nhóm). Đặt đơn giá cho từng giáo viên ở mục <b>Giáo viên</b>; giá mặc định ở <b>Cài đặt → Bảng giá</b>.</p>
           <div id="salaryResult"></div>
         </section>
 
@@ -202,6 +202,23 @@
             </div>
             <label class="check-row"><input type="checkbox" id="notifPerm" /> Bật thông báo trình duyệt (popup)</label>
             <button class="btn" id="testNotify">Thử thông báo</button>
+          </div>
+
+          <div class="settings-card admin-only" id="pricingCard">
+            <h3>💵 Bảng giá mặc định theo loại lớp</h3>
+            <p class="hint">Thiết lập <b>1 lần</b> — khi thêm giáo viên / học sinh mới, lương & học phí sẽ tự điền theo loại lớp (cá nhân / đôi / nhóm). Bạn vẫn sửa lại từng người được.</p>
+            <div class="price-grid">
+              <div class="pg-h"></div><div class="pg-h">Cá nhân</div><div class="pg-h">Đôi</div><div class="pg-h">Nhóm</div>
+              <div class="pg-l">Lương GV/buổi</div>
+              <input id="dpCaNhan" type="number" min="0" step="1000" value="0" />
+              <input id="dpDoi" type="number" min="0" step="1000" value="0" />
+              <input id="dpNhom" type="number" min="0" step="1000" value="0" />
+              <div class="pg-l">Học phí HS/buổi</div>
+              <input id="dtCaNhan" type="number" min="0" step="1000" value="0" />
+              <input id="dtDoi" type="number" min="0" step="1000" value="0" />
+              <input id="dtNhom" type="number" min="0" step="1000" value="0" />
+            </div>
+            <button class="btn primary" id="savePricing" style="margin-top:14px;">Lưu bảng giá</button>
           </div>
 
           <div class="settings-card admin-only" id="demoCard">
@@ -258,9 +275,9 @@
         <div id="formErr" class="form-err hidden"></div>
         <form id="scheduleForm">
           <input type="hidden" id="schedId" />
-          <div class="field">
-            <label for="fSubject">Môn / Nhạc cụ *</label>
-            <input id="fSubject" type="text" placeholder="VD: Piano cơ bản" required />
+          <div class="row-2">
+            <div class="field"><label for="fSubject">Môn / Nhạc cụ *</label><input id="fSubject" list="subjectList" type="text" placeholder="VD: Piano" required /></div>
+            <div class="field"><label for="fLessonType">Loại lớp *</label><select id="fLessonType"></select></div>
           </div>
           <div class="field">
             <label for="fDate">Ngày (dd/mm/yyyy) *</label>
@@ -317,23 +334,24 @@
             <div class="field"><label for="smGuardian">Phụ huynh</label><input id="smGuardian" type="text" placeholder="VD: Chị Mai" /></div>
           </div>
           <div class="row-2">
-            <div class="field"><label for="smSubject">Môn / Nhạc cụ</label><input id="smSubject" type="text" placeholder="VD: Piano" /></div>
+            <div class="field"><label for="smSubject">Môn / Nhạc cụ</label><input id="smSubject" list="subjectList" type="text" placeholder="VD: Piano" /></div>
+            <div class="field"><label for="smLessonType">Loại lớp</label><select id="smLessonType"></select></div>
+          </div>
+          <div class="row-2">
             <div class="field"><label for="smTeacher">Giáo viên</label><select id="smTeacher"></select></div>
-          </div>
-          <div class="row-2">
             <div class="field"><label for="smTotal">Số buổi của khóa *</label><input id="smTotal" type="number" min="1" step="1" value="12" /></div>
-            <div class="field"><label for="smFee">Học phí mỗi buổi (đ)</label><input id="smFee" type="number" min="0" step="1000" value="0" /></div>
           </div>
           <div class="row-2">
-            <div class="field"><label for="smStart">Ngày bắt đầu</label>
-              <div class="date-wrap">
-                <input id="smStart" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
-                <button type="button" class="cal-btn" data-cal="smStart" aria-label="Chọn ngày">📅</button>
-                <input type="date" id="smStartNative" class="native-date" tabindex="-1" aria-hidden="true" />
-              </div>
-            </div>
+            <div class="field"><label for="smFee">Học phí mỗi buổi (đ)</label><input id="smFee" type="number" min="0" step="1000" value="0" /></div>
             <div class="field"><label for="smStatus">Trạng thái</label>
               <select id="smStatus"><option value="active">Đang học</option><option value="paused">Tạm nghỉ</option><option value="completed">Đã kết thúc</option></select>
+            </div>
+          </div>
+          <div class="field"><label for="smStart">Ngày bắt đầu</label>
+            <div class="date-wrap">
+              <input id="smStart" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+              <button type="button" class="cal-btn" data-cal="smStart" aria-label="Chọn ngày">📅</button>
+              <input type="date" id="smStartNative" class="native-date" tabindex="-1" aria-hidden="true" />
             </div>
           </div>
           <div class="field"><label for="smNote">Ghi chú</label><textarea id="smNote" rows="2" placeholder="Tùy chọn"></textarea></div>
@@ -358,9 +376,14 @@
         <form id="teacherForm">
           <input type="hidden" id="tmId" />
           <div class="field"><label for="tmName">Họ và tên *</label><input id="tmName" type="text" placeholder="VD: Cô Hoa" required /></div>
-          <div class="row-2">
-            <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
-            <div class="field"><label for="tmPay">Lương mỗi buổi (đ)</label><input id="tmPay" type="number" min="0" step="1000" value="0" /></div>
+          <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
+          <div class="field">
+            <label>Lương mỗi buổi theo loại lớp (đ)</label>
+            <div class="pay-rates">
+              <div class="pr-item"><span>Cá nhân</span><input id="tmPayCaNhan" type="number" min="0" step="1000" value="0" /></div>
+              <div class="pr-item"><span>Đôi</span><input id="tmPayDoi" type="number" min="0" step="1000" value="0" /></div>
+              <div class="pr-item"><span>Nhóm</span><input id="tmPayNhom" type="number" min="0" step="1000" value="0" /></div>
+            </div>
           </div>
           <div class="field">
             <label for="tmAcc">Tài khoản đăng nhập (gắn email)</label>
@@ -376,6 +399,16 @@
       </div>
     </div>
   </div>
+
+  <!-- Gợi ý môn học cho ô nhập -->
+  <datalist id="subjectList">
+    <option value="Piano"></option>
+    <option value="Guitar"></option>
+    <option value="Thanh nhạc"></option>
+    <option value="Múa"></option>
+    <option value="Vẽ"></option>
+    <option value="Cờ vua"></option>
+  </datalist>
 
   <div class="toast-wrap" id="toastWrap"></div>
 
