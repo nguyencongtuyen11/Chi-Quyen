@@ -21,6 +21,7 @@
   let teachers = [], teachersById = {}, myTeacher = null;
   let students = [], studentsById = {};
   let presentByStudent = {};        // student_id -> số buổi đã có mặt (toàn thời gian)
+  let teacherStatsById = {};        // teacher_id -> { taught, off }
   let viewDate = startOfToday();
   let attDate = startOfToday();   // ngày đang điểm danh (mặc định hôm nay)
   let currentView = "today";
@@ -103,6 +104,8 @@
   function buoiOf(t) { const h = parseInt(String(t).slice(0, 2), 10); return h < 12 ? "sang" : h < 18 ? "chieu" : "toi"; }
   function initials(name) { const p = String(name || "?").trim().split(/\s+/); return (p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0]).toUpperCase(); }
   function money(n) { return (Number(n) || 0).toLocaleString("vi-VN") + " đ"; }
+  function moneyShort(n) { n = Number(n) || 0; if (n >= 1000000) return (n / 1000000).toLocaleString("vi-VN", { maximumFractionDigits: 1 }) + "tr"; if (n >= 1000) return Math.round(n / 1000) + "k"; return String(n); }
+  function teacherStatusLabel(s) { return s === "inactive" ? "Nghỉ việc" : "Đang làm"; }
   function isAdmin() { return myProfile && myProfile.role === "admin"; }
 
   function toast(msg, type) {
@@ -340,10 +343,11 @@
   //  TẢI DỮ LIỆU DÙNG CHUNG
   // =====================================================================
   async function loadGlobals() {
-    const [tRes, sRes, pRes, cRes, setRes] = await Promise.all([
-      B.listTeachers(), B.listStudents(), B.listProfiles(), B.countPresentByStudent(), B.getSettings(),
+    const [tRes, sRes, pRes, cRes, setRes, tsRes] = await Promise.all([
+      B.listTeachers(), B.listStudents(), B.listProfiles(), B.countPresentByStudent(), B.getSettings(), B.teacherStats(),
     ]);
     settings = setRes.data || {};
+    teacherStatsById = tsRes.data || {};
     teachers = tRes.data || [];
     teachersById = {}; teachers.forEach((t) => (teachersById[t.id] = t));
     students = (sRes.data || []).slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"));
@@ -863,13 +867,21 @@
     if (!teachers.length) { $("teacherList").innerHTML = '<div class="empty"><div class="big">👨‍🏫</div>Chưa có giáo viên nào.</div>'; return; }
     const linkedName = (uid) => { const p = profilesById[uid]; return p ? (p.email || p.full_name) : "—"; };
     $("teacherList").innerHTML = teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => {
-      return `<div class="info-card">` +
+      const st = teacherStatsById[t.id] || { taught: 0, off: 0 };
+      const statusCls = t.status === "inactive" ? "paused" : "active";
+      const badge = `<span class="status-pill ${statusCls}">${teacherStatusLabel(t.status)}</span>`;
+      const payCompact = LESSON_TYPES.map((lt) => moneyShort(teacherPayFor(t, lt.key))).join(" / ");
+      return `<div class="info-card${t.status === "inactive" ? " is-inactive" : ""}">` +
         `<div class="ic-head"><div class="ic-avatar">${esc(initials(t.full_name))}</div>` +
-        `<div class="ic-title"><div class="nm">${esc(t.full_name)}</div><div class="sb">${esc(t.note || "Giáo viên")}</div></div></div>` +
+        `<div class="ic-title"><div class="nm">${esc(t.full_name)}</div><div class="sb">${esc(t.specialty || "Giáo viên")}</div></div>${badge}</div>` +
         `<div class="ic-rows">` +
-          LESSON_TYPES.map((lt) => row("Lương " + lt.label.toLowerCase(), money(teacherPayFor(t, lt.key)))).join("") +
+          (t.hometown ? row("Quê quán", esc(t.hometown)) : "") +
+          (t.hire_date ? row("Ngày vào làm", ymdToDmy(t.hire_date)) : "") +
+          row("Đã dạy / nghỉ", `${st.taught} / ${st.off} buổi`) +
+          row("Lương CN/Đôi/Nhóm/GS", payCompact) +
           row("Tài khoản", t.user_id ? esc(linkedName(t.user_id)) : '<span style="color:var(--muted-2)">chưa gắn</span>') +
           (t.phone ? row("Điện thoại", esc(t.phone)) : "") +
+          (t.email ? row("Email", esc(t.email)) : "") +
         `</div>` +
         `<div class="ic-acts"><button class="btn btn-sm" data-tcedit="${t.id}">${ICON_EDIT} Sửa</button>` +
         `<button class="btn btn-sm danger" data-tcdel="${t.id}">${ICON_DEL} Xóa</button></div>` +
@@ -890,13 +902,18 @@
       profilesList.slice().sort((a, b) => (a.email || "").localeCompare(b.email || "")).filter((p) => !usedBy[p.id] || (isEdit && usedBy[p.id] === t.id))
         .map((p) => `<option value="${p.id}">${esc((p.email || p.full_name || "?") + (p.role === "admin" ? " (admin)" : ""))}</option>`).join("");
     if (isEdit) {
-      $("tmName").value = t.full_name || ""; $("tmPhone").value = t.phone || "";
+      $("tmName").value = t.full_name || ""; $("tmPhone").value = t.phone || ""; $("tmEmail").value = t.email || "";
+      $("tmGender").value = t.gender || ""; $("tmDob").value = ymdToDmy(t.dob);
+      $("tmHometown").value = t.hometown || ""; $("tmNationalId").value = t.national_id || "";
+      $("tmAddress").value = t.address || ""; $("tmSpecialty").value = t.specialty || "";
+      $("tmHire").value = ymdToDmy(t.hire_date); $("tmStatus").value = t.status || "active";
       const r = Object.assign({}, t.pay_rates || {});
       if (r.ca_nhan == null) r.ca_nhan = t.pay_per_session || 0;
       renderPayRateInputs($("tmPayRates"), r);
       acc.value = t.user_id || ""; $("tmNote").value = t.note || "";
     } else {
       renderPayRateInputs($("tmPayRates"), settings.default_pay || {});
+      $("tmStatus").value = "active"; $("tmHire").value = dmy(startOfToday());
     }
     $("teacherModal").classList.remove("hidden");
     $("tmName").focus();
@@ -909,7 +926,11 @@
     if (!name) { const e = $("tmErr"); e.textContent = "Nhập tên giáo viên."; e.classList.remove("hidden"); return; }
     const pr = readRateInputs($("tmPayRates"), "data-ptype");
     const payload = {
-      full_name: name, phone: $("tmPhone").value.trim() || null,
+      full_name: name, phone: $("tmPhone").value.trim() || null, email: $("tmEmail").value.trim() || null,
+      gender: $("tmGender").value || null, dob: dmyToYmd($("tmDob").value),
+      hometown: $("tmHometown").value.trim() || null, national_id: $("tmNationalId").value.trim() || null,
+      address: $("tmAddress").value.trim() || null, specialty: $("tmSpecialty").value.trim() || null,
+      hire_date: dmyToYmd($("tmHire").value), status: $("tmStatus").value || "active",
       pay_rates: pr, pay_per_session: pr.ca_nhan || 0,
       user_id: $("tmAcc").value || null, note: $("tmNote").value.trim() || null,
     };
@@ -1292,7 +1313,7 @@
     $("smLessonType").addEventListener("change", () => { if (!$("smId").value) { const d = defaultTuition($("smLessonType").value); if (d) $("smFee").value = d; } });
 
     // Mask ngày/giờ + nút lịch
-    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker"].forEach((id) => maskDate($(id)));
+    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire"].forEach((id) => maskDate($(id)));
     ["fStart", "fEnd"].forEach((id) => maskTime($(id)));
     document.querySelectorAll(".cal-btn").forEach(wireCal);
 

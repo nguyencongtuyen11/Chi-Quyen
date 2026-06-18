@@ -302,6 +302,7 @@ svg { display: block; }
    =================================================================== */
 .card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .info-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; box-shadow: var(--shadow-sm); }
+.info-card.is-inactive { opacity: .6; }
 .ic-head { display: flex; align-items: flex-start; gap: 11px; }
 .ic-avatar { width: 40px; height: 40px; border-radius: 11px; background: var(--info-bg); color: var(--primary); display: grid; place-items: center; font-weight: 800; flex-shrink: 0; }
 .ic-title { flex: 1; min-width: 0; }

@@ -28,7 +28,17 @@ create table if not exists public.teachers (
   user_id         uuid references auth.users (id) on delete set null,
   phone           text,
   pay_per_session numeric not null default 0,
+  pay_rates       jsonb not null default '{}'::jsonb,
   note            text,
+  hire_date       date,
+  dob             date,
+  gender          text,
+  hometown        text,
+  address         text,
+  national_id     text,
+  specialty       text,
+  email           text,
+  status          text not null default 'active',  -- active / inactive
   created_at      timestamptz not null default now()
 );
 alter table public.teachers enable row level security;
@@ -38,6 +48,15 @@ alter table public.teachers add column if not exists phone           text;
 alter table public.teachers add column if not exists pay_per_session numeric not null default 0;
 alter table public.teachers add column if not exists note            text;
 alter table public.teachers add column if not exists pay_rates       jsonb not null default '{}'::jsonb;
+alter table public.teachers add column if not exists hire_date       date;
+alter table public.teachers add column if not exists dob             date;
+alter table public.teachers add column if not exists gender          text;
+alter table public.teachers add column if not exists hometown        text;
+alter table public.teachers add column if not exists address         text;
+alter table public.teachers add column if not exists national_id     text;
+alter table public.teachers add column if not exists specialty       text;
+alter table public.teachers add column if not exists email           text;
+alter table public.teachers add column if not exists status          text not null default 'active';
 
 -- ---------------------------------------------------------------------
 --  3) STUDENTS — học sinh + thông tin khóa học

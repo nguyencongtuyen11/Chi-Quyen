@@ -366,7 +366,36 @@
         <form id="teacherForm">
           <input type="hidden" id="tmId" />
           <div class="field"><label for="tmName">Họ và tên *</label><input id="tmName" type="text" placeholder="VD: Cô Hoa" required /></div>
-          <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
+          <div class="row-2">
+            <div class="field"><label for="tmGender">Giới tính</label><select id="tmGender"><option value="">—</option><option>Nam</option><option>Nữ</option><option>Khác</option></select></div>
+            <div class="field"><label for="tmDob">Ngày sinh</label>
+              <div class="date-wrap">
+                <input id="tmDob" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+                <button type="button" class="cal-btn" data-cal="tmDob" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="tmDobNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="tmPhone">Điện thoại</label><input id="tmPhone" type="text" placeholder="09xxxxxxxx" /></div>
+            <div class="field"><label for="tmEmail">Email liên hệ</label><input id="tmEmail" type="text" placeholder="email@..." /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="tmHometown">Quê quán</label><input id="tmHometown" type="text" placeholder="VD: Hà Nội" /></div>
+            <div class="field"><label for="tmNationalId">CCCD / CMND</label><input id="tmNationalId" type="text" placeholder="Số CCCD" /></div>
+          </div>
+          <div class="field"><label for="tmAddress">Địa chỉ hiện tại</label><input id="tmAddress" type="text" placeholder="VD: Cầu Giấy, Hà Nội" /></div>
+          <div class="row-2">
+            <div class="field"><label for="tmSpecialty">Chuyên môn / Nhạc cụ</label><input id="tmSpecialty" list="subjectList" type="text" placeholder="VD: Piano" /></div>
+            <div class="field"><label for="tmHire">Ngày vào làm</label>
+              <div class="date-wrap">
+                <input id="tmHire" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+                <button type="button" class="cal-btn" data-cal="tmHire" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="tmHireNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+          <div class="field"><label for="tmStatus">Trạng thái làm việc</label><select id="tmStatus"><option value="active">Đang làm</option><option value="inactive">Nghỉ việc</option></select></div>
           <div class="field">
             <label>Lương mỗi buổi theo loại lớp (đ)</label>
             <div class="pay-rates" id="tmPayRates"></div>

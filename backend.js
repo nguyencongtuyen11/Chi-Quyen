@@ -125,6 +125,15 @@
       saveSetting(key, value) {
         return sb.from("app_settings").upsert({ key, value, updated_at: nowISO() }, { onConflict: "key" });
       },
+
+      // ---- THỐNG KÊ GIÁO VIÊN (đã dạy / nghỉ) ----
+      async teacherStats() {
+        const { data, error } = await sb.from("schedules").select("teacher_id, teacher_present");
+        if (error) return { data: {}, error };
+        const m = {};
+        (data || []).forEach((r) => { const x = m[r.teacher_id] || (m[r.teacher_id] = { taught: 0, off: 0 }); if (r.teacher_present === true) x.taught++; else if (r.teacher_present === false) x.off++; });
+        return { data: m, error: null };
+      },
     };
   }
 
@@ -153,9 +162,9 @@
         { id: "u-nam",   full_name: "Thầy Nam", email: "thay.nam@openmusic.vn", role: "teacher" },
       ];
       const teachers = [
-        { id: "t-lan", full_name: "Cô Lan",  user_id: "u-lan", phone: "0901111111", pay_per_session: 150000, pay_rates: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 }, note: "Piano", created_at: nowISO() },
-        { id: "t-nam", full_name: "Thầy Nam", user_id: "u-nam", phone: "0902222222", pay_per_session: 130000, pay_rates: { ca_nhan: 130000, doi: 100000, nhom: 80000, gia_su: 180000 }, note: "Guitar", created_at: nowISO() },
-        { id: "t-hoa", full_name: "Cô Hoa",  user_id: null,    phone: "0903333333", pay_per_session: 140000, pay_rates: { ca_nhan: 140000, doi: 110000, nhom: 85000, gia_su: 190000 }, note: "Thanh nhạc (chưa có tài khoản)", created_at: nowISO() },
+        { id: "t-lan", full_name: "Cô Lan",  user_id: "u-lan", phone: "0901111111", email: "co.lan@openmusic.vn", pay_per_session: 150000, pay_rates: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 }, specialty: "Piano", hometown: "Hà Nội", address: "Cầu Giấy, Hà Nội", national_id: "001195000111", gender: "Nữ", dob: "1995-03-12", hire_date: d(-220), status: "active", note: "", created_at: nowISO() },
+        { id: "t-nam", full_name: "Thầy Nam", user_id: "u-nam", phone: "0902222222", email: "thay.nam@openmusic.vn", pay_per_session: 130000, pay_rates: { ca_nhan: 130000, doi: 100000, nhom: 80000, gia_su: 180000 }, specialty: "Guitar", hometown: "Nghệ An", address: "Vinh, Nghệ An", national_id: "040092000222", gender: "Nam", dob: "1992-07-08", hire_date: d(-160), status: "active", note: "", created_at: nowISO() },
+        { id: "t-hoa", full_name: "Cô Hoa",  user_id: null,    phone: "0903333333", email: "", pay_per_session: 140000, pay_rates: { ca_nhan: 140000, doi: 110000, nhom: 85000, gia_su: 190000 }, specialty: "Thanh nhạc", hometown: "Thừa Thiên Huế", address: "TP. Huế", national_id: "046098000333", gender: "Nữ", dob: "1998-11-20", hire_date: d(-95), status: "active", note: "Chưa có tài khoản đăng nhập", created_at: nowISO() },
       ];
       const students = [
         { id: "s1", full_name: "Nguyễn An",   phone: "0911000001", guardian: "Chị Mai",  subject: "Piano",  lesson_type: "ca_nhan", teacher_id: "t-lan", total_sessions: 12, tuition_per_session: 200000, start_date: d(-20), status: "active", note: "", created_at: nowISO() },
@@ -329,6 +338,11 @@
       // ---- SETTINGS (bảng giá mặc định) ----
       async getSettings() { return ok(Object.assign({}, store.settings || {})); },
       async saveSetting(key, value) { store.settings = store.settings || {}; store.settings[key] = value; save(store); return ok(true); },
+      async teacherStats() {
+        const m = {};
+        store.schedules.forEach((r) => { const x = m[r.teacher_id] || (m[r.teacher_id] = { taught: 0, off: 0 }); if (r.teacher_present === true) x.taught++; else if (r.teacher_present === false) x.off++; });
+        return ok(m);
+      },
     };
   }
 
