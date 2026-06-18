@@ -270,6 +270,26 @@ create policy "settings_select_all" on public.app_settings for select to authent
 create policy "settings_admin_write" on public.app_settings for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
+-- ---------------------------------------------------------------------
+--  7c) PAYMENTS — học sinh đóng học phí (chỉ Admin xem & quản lý)
+-- ---------------------------------------------------------------------
+create table if not exists public.payments (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid not null references public.students (id) on delete cascade,
+  paid_at     timestamptz not null default now(),
+  amount      numeric not null default 0,
+  sessions    int     not null default 0,
+  note        text,
+  created_by  uuid references auth.users (id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+alter table public.payments enable row level security;
+create index if not exists payments_student_idx on public.payments (student_id);
+create index if not exists payments_paid_idx    on public.payments (paid_at);
+drop policy if exists "payments_admin_all" on public.payments;
+create policy "payments_admin_all" on public.payments for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
 -- =====================================================================
 --  8) CẤP QUYỀN ADMIN: sau khi tài khoản đã ĐĂNG KÝ, chạy (đổi email):
 --     update public.profiles set role='admin'

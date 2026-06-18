@@ -46,6 +46,7 @@
         <button class="menu-item admin-only" data-view="teachers"><span class="mi-ic">👨‍🏫</span> Giáo viên</button>
         <button class="menu-item admin-only" data-view="salary"><span class="mi-ic">💰</span> Tính lương</button>
         <button class="menu-item admin-only" data-view="tuition"><span class="mi-ic">🧮</span> Học phí học sinh</button>
+        <button class="menu-item admin-only" data-view="profit"><span class="mi-ic">💵</span> Lãi/Lỗ trung tâm</button>
         <button class="menu-item" data-view="notify"><span class="mi-ic">🔔</span> Thông báo <span class="badge-count" id="notifyBadge" hidden>0</span></button>
         <button class="menu-item" data-view="settings"><span class="mi-ic">⚙️</span> Cài đặt</button>
       </nav>
@@ -189,6 +190,19 @@
           </div>
           <p class="hint">Số buổi đã học = số buổi được điểm danh “có mặt”. Học phí thực thu = số buổi đã học × học phí/buổi. Hệ thống tự báo khi học sinh <b>sắp / đã kết thúc khóa</b>.</p>
           <div id="tuitionResult"></div>
+        </section>
+
+        <!-- ============ VIEW: LÃI / LỖ ============ -->
+        <section class="view" id="view-profit" hidden>
+          <div class="toolbar">
+            <label class="inline">Từ <input type="text" id="proFrom" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
+            <label class="inline">Đến <input type="text" id="proTo" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
+            <button class="btn" id="proMonthBtn">Tháng này</button>
+            <div class="spacer"></div>
+            <button class="btn primary" id="proRun">Tính lãi</button>
+          </div>
+          <p class="hint">Lãi = <b>tổng học phí học sinh đóng</b> (theo ngày đóng trong kỳ) − <b>tổng lương trả giáo viên</b> (số buổi đã dạy × đơn giá trong kỳ).</p>
+          <div id="profitResult"></div>
         </section>
 
         <!-- ============ VIEW: THÔNG BÁO ============ -->
@@ -427,6 +441,40 @@
         <button class="btn" id="tmCancel">Hủy</button>
         <button class="btn primary" id="tmSave">Lưu giáo viên</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: HỌC PHÍ (đóng tiền) ===================== -->
+  <div id="paymentModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="payTitle">Học phí</h3>
+        <button class="x" id="payClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="payStudentId" />
+        <div class="stat-chips" id="paySummary" style="margin-bottom:14px;"></div>
+        <div id="payErr" class="form-err hidden"></div>
+        <div class="row-2">
+          <div class="field"><label for="payDate">Ngày đóng</label>
+            <div class="date-wrap">
+              <input id="payDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+              <button type="button" class="cal-btn" data-cal="payDate" aria-label="Chọn ngày">📅</button>
+              <input type="date" id="payDateNative" class="native-date" tabindex="-1" aria-hidden="true" />
+            </div>
+          </div>
+          <div class="field"><label for="payTime">Giờ</label><input id="payTime" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" /></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><label for="payAmount">Số tiền (đ)</label><input id="payAmount" type="number" min="0" step="1000" value="0" /></div>
+          <div class="field"><label for="paySessions">Đóng cho (buổi)</label><input id="paySessions" type="number" min="0" step="1" value="0" /></div>
+        </div>
+        <div class="field"><label for="payNote">Ghi chú</label><input id="payNote" type="text" placeholder="VD: Đợt 1 / đóng đủ khóa" /></div>
+        <button class="btn primary" id="payAdd" style="width:100%;">+ Ghi nhận đóng tiền</button>
+        <h3 class="block-title" style="margin-top:18px;">Lịch sử đóng</h3>
+        <div id="payHistory"></div>
+      </div>
+      <div class="modal-foot"><button class="btn" id="payDone">Xong</button></div>
     </div>
   </div>
 

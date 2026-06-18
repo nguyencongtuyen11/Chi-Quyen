@@ -82,6 +82,12 @@
       updateStudent(id, o) { return sb.from("students").update(o).eq("id", id); },
       deleteStudent(id) { return sb.from("students").delete().eq("id", id); },
 
+      // ---- PAYMENTS (học phí) ----
+      listPayments() { return sb.from("payments").select("*").order("paid_at", { ascending: false }); },
+      addPayment(o) { return sb.from("payments").insert(o); },
+      updatePayment(id, o) { return sb.from("payments").update(o).eq("id", id); },
+      deletePayment(id) { return sb.from("payments").delete().eq("id", id); },
+
       // ---- SCHEDULES ----
       async listSchedules({ from, to, teacherId }) {
         let q = sb.from("schedules").select("*").gte("schedule_date", from).lte("schedule_date", to).order("start_time", { ascending: true });
@@ -203,7 +209,12 @@
         default_pay: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 },
         default_tuition: { ca_nhan: 200000, doi: 160000, nhom: 120000, gia_su: 250000 },
       };
-      return { users, profiles, teachers, students, schedules, attendance, settings };
+      const payments = [
+        { id: uid(), student_id: "s1", paid_at: new Date(addDays(today, -18)).toISOString(), amount: 2400000, sessions: 12, note: "Đóng đủ khóa", created_by: "u-admin", created_at: nowISO() },
+        { id: uid(), student_id: "s2", paid_at: new Date(addDays(today, -25)).toISOString(), amount: 1920000, sessions: 12, note: "Đợt 1", created_by: "u-admin", created_at: nowISO() },
+        { id: uid(), student_id: "s3", paid_at: new Date(addDays(today, -8)).toISOString(),  amount: 2040000, sessions: 12, note: "", created_by: "u-admin", created_at: nowISO() },
+      ];
+      return { users, profiles, teachers, students, schedules, attendance, settings, payments };
     }
 
     function load() {
@@ -298,8 +309,15 @@
       async deleteStudent(id) {
         store.students = store.students.filter((x) => x.id !== id);
         store.attendance = store.attendance.filter((a) => a.student_id !== id);
+        store.payments = (store.payments || []).filter((p) => p.student_id !== id);
         save(store); return ok(true);
       },
+
+      // ---- PAYMENTS (học phí) ----
+      async listPayments() { return ok((store.payments || []).slice().sort((a, b) => String(b.paid_at || "").localeCompare(String(a.paid_at || "")))); },
+      async addPayment(o) { store.payments = store.payments || []; const r = Object.assign({ id: uid(), paid_at: nowISO(), amount: 0, sessions: 0, created_at: nowISO() }, o); store.payments.push(r); save(store); return ok(r); },
+      async updatePayment(id, o) { const p = (store.payments || []).find((x) => x.id === id); if (p) Object.assign(p, o); save(store); return ok(p); },
+      async deletePayment(id) { store.payments = (store.payments || []).filter((x) => x.id !== id); save(store); return ok(true); },
 
       // ---- SCHEDULES ----
       async listSchedules({ from, to, teacherId }) {

@@ -22,6 +22,8 @@
   let students = [], studentsById = {};
   let presentByStudent = {};        // student_id -> số buổi đã có mặt (toàn thời gian)
   let teacherStatsById = {};        // teacher_id -> { taught, off }
+  let allPayments = [];             // danh sách đóng học phí (admin)
+  let paidByStudent = {};           // student_id -> { amount, sessions }
   let viewDate = startOfToday();
   let attDate = startOfToday();   // ngày đang điểm danh (mặc định hôm nay)
   let currentView = "today";
@@ -41,7 +43,7 @@
   ];
   const DOW = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
   const DOW_SHORT = { 0: "CN", 1: "Th 2", 2: "Th 3", 3: "Th 4", 4: "Th 5", 5: "Th 6", 6: "Th 7" };
-  const PAGE_TITLE = { today: "Hôm nay & Điểm danh", schedule: "Thời khóa biểu", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí học sinh", notify: "Thông báo", settings: "Cài đặt" };
+  const PAGE_TITLE = { today: "Hôm nay & Điểm danh", schedule: "Thời khóa biểu", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí học sinh", profit: "Lãi/Lỗ trung tâm", notify: "Thông báo", settings: "Cài đặt" };
 
   // Môn học & loại lớp (cá nhân / đôi / nhóm)
   const SUBJECTS = ["Piano", "Guitar", "Thanh nhạc", "Múa", "Vẽ", "Cờ vua"];
@@ -357,6 +359,16 @@
     profilesById = {}; profilesList.forEach((p) => (profilesById[p.id] = p));
     presentByStudent = cRes.data || {};
     myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
+
+    allPayments = []; paidByStudent = {};
+    if (isAdmin()) {
+      const payRes = await B.listPayments();
+      allPayments = payRes.data || [];
+      allPayments.forEach((p) => {
+        const m = paidByStudent[p.student_id] || (paidByStudent[p.student_id] = { amount: 0, sessions: 0 });
+        m.amount += Number(p.amount) || 0; m.sessions += Number(p.sessions) || 0;
+      });
+    }
   }
 
   // hồ sơ giáo viên dùng để lọc lịch theo vai trò
@@ -384,6 +396,7 @@
     else if (view === "teachers") renderTeachers();
     else if (view === "salary") { ensureSalaryDates(); }
     else if (view === "tuition") renderTuition();
+    else if (view === "profit") { ensureProfitDates(); }
     else if (view === "notify") renderNotify();
     else if (view === "settings") renderSettings();
   }
@@ -892,6 +905,9 @@
     if (!list.length) { $("studentList").innerHTML = '<div class="empty"><div class="big">🎓</div>Chưa có học sinh nào.</div>'; return; }
     $("studentList").innerHTML = list.map((s) => {
       const p = studentProgress(s);
+      const paid = paidByStudent[s.id] || { amount: 0, sessions: 0 };
+      const courseTotal = (s.total_sessions || 0) * (s.tuition_per_session || 0);
+      const owed = Math.max(0, courseTotal - paid.amount);
       const tag = s.status === "completed" || p.remaining === 0 && p.total ? '<span class="tag-done">Đã kết thúc</span>'
         : (p.remaining <= 2 && p.total ? '<span class="tag-near">Sắp kết thúc</span>' : "");
       const pcls = (p.remaining === 0 && p.total) ? "done" : (p.remaining <= 2 && p.total ? "near" : "");
@@ -903,11 +919,12 @@
           row("Buổi đã học", `${p.used}/${p.total} buổi`) +
           row("Còn lại", `${p.remaining} buổi`) +
           row("Học phí/buổi", money(s.tuition_per_session)) +
-          (s.phone ? row("Điện thoại", esc(s.phone)) : "") +
-          (s.guardian ? row("Phụ huynh", esc(s.guardian)) : "") +
+          row("Đã đóng", money(paid.amount) + (paid.sessions ? ` · ${paid.sessions} buổi` : "")) +
+          (owed > 0 ? row("Còn thiếu", `<span style="color:var(--bad)">${money(owed)}</span>`) : row("Học phí", '<span style="color:var(--good)">Đã đóng đủ</span>')) +
         `</div>` +
         `<div class="progress ${pcls}"><span style="width:${Math.round(p.ratio * 100)}%"></span></div>` +
-        `<div class="ic-acts"><button class="btn btn-sm" data-stedit="${s.id}">${ICON_EDIT} Sửa</button>` +
+        `<div class="ic-acts"><button class="btn btn-sm" data-stpay="${s.id}">💳 Học phí</button>` +
+        `<button class="btn btn-sm" data-stedit="${s.id}">${ICON_EDIT} Sửa</button>` +
         `<button class="btn btn-sm danger" data-stdel="${s.id}">${ICON_DEL} Xóa</button></div>` +
       `</div>`;
     }).join("");
@@ -967,6 +984,110 @@
     if (error) return toast("Xóa thất bại: " + error.message, "err");
     toast("Đã xóa học sinh.", "ok");
     await loadGlobals(); renderStudents();
+  }
+
+  // =====================================================================
+  //  HỌC PHÍ — ĐÓNG TIỀN (admin)
+  // =====================================================================
+  async function reloadPayments() {
+    const r = await B.listPayments();
+    allPayments = r.data || [];
+    paidByStudent = {};
+    allPayments.forEach((p) => { const m = paidByStudent[p.student_id] || (paidByStudent[p.student_id] = { amount: 0, sessions: 0 }); m.amount += Number(p.amount) || 0; m.sessions += Number(p.sessions) || 0; });
+  }
+  function openPaymentModal(studentId) {
+    const st = studentsById[studentId]; if (!st) return;
+    $("payStudentId").value = studentId;
+    $("payTitle").textContent = "Học phí — " + st.full_name;
+    $("payErr").classList.add("hidden");
+    const now = new Date();
+    $("payDate").value = dmy(now);
+    $("payTime").value = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+    $("payAmount").value = (st.tuition_per_session || 0) * (st.total_sessions || 0);
+    $("paySessions").value = st.total_sessions || 0;
+    $("payNote").value = "";
+    renderPaymentSummary(st);
+    renderPaymentHistory(studentId);
+    $("paymentModal").classList.remove("hidden");
+  }
+  function closePaymentModal() { $("paymentModal").classList.add("hidden"); }
+  function renderPaymentSummary(st) {
+    const paid = paidByStudent[st.id] || { amount: 0, sessions: 0 };
+    const courseTotal = (st.total_sessions || 0) * (st.tuition_per_session || 0);
+    const owed = Math.max(0, courseTotal - paid.amount);
+    $("paySummary").innerHTML =
+      chip(money(st.tuition_per_session), "HP/buổi", "") +
+      chip(money(courseTotal), "Cả khóa", "primary") +
+      chip(money(paid.amount), "Đã đóng", "good") +
+      chip(money(owed), "Còn thiếu", owed > 0 ? "bad" : "good");
+  }
+  function renderPaymentHistory(studentId) {
+    const list = allPayments.filter((p) => p.student_id === studentId).sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)));
+    if (!list.length) { $("payHistory").innerHTML = '<div class="empty" style="padding:18px;">Chưa có lần đóng nào.</div>'; return; }
+    $("payHistory").innerHTML = list.map((p) => {
+      const d = new Date(p.paid_at);
+      const dt = isNaN(d.getTime()) ? "" : `${dmy(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `<div class="pay-item"><div class="pi-main"><div class="pi-amt">${money(p.amount)}</div>` +
+        `<div class="pi-sub">${dt}${p.sessions ? " · " + p.sessions + " buổi" : ""}${p.note ? " · " + esc(p.note) : ""}</div></div>` +
+        `<button class="att-btn no" data-paydel="${p.id}" title="Xóa">🗑</button></div>`;
+    }).join("");
+  }
+  async function addPaymentRecord() {
+    const sid = $("payStudentId").value;
+    const ymd2 = dmyToYmd($("payDate").value), tm = normTime($("payTime").value) || "00:00";
+    if (!ymd2) { const e = $("payErr"); e.textContent = "Ngày đóng không hợp lệ (dd/mm/yyyy)."; e.classList.remove("hidden"); return; }
+    const [y, mo, da] = ymd2.split("-").map(Number), [hh, mi] = tm.split(":").map(Number);
+    const payload = { student_id: sid, paid_at: new Date(y, mo - 1, da, hh, mi).toISOString(), amount: parseInt($("payAmount").value, 10) || 0, sessions: parseInt($("paySessions").value, 10) || 0, note: $("payNote").value.trim() || null, created_by: user.id };
+    $("payAdd").disabled = true;
+    const { error } = await B.addPayment(payload);
+    $("payAdd").disabled = false;
+    if (error) { const e = $("payErr"); e.textContent = "Lưu thất bại: " + error.message; e.classList.remove("hidden"); return; }
+    await reloadPayments();
+    renderPaymentSummary(studentsById[sid]); renderPaymentHistory(sid);
+    if (currentView === "students") renderStudents();
+    toast("Đã ghi nhận đóng học phí.", "ok");
+    $("payNote").value = "";
+  }
+  async function deletePaymentRecord(id) {
+    if (!confirm("Xóa lần đóng học phí này?")) return;
+    const { error } = await B.deletePayment(id);
+    if (error) return toast("Xóa thất bại: " + error.message, "err");
+    const sid = $("payStudentId").value;
+    await reloadPayments();
+    renderPaymentSummary(studentsById[sid]); renderPaymentHistory(sid);
+    if (currentView === "students") renderStudents();
+    toast("Đã xóa.", "ok");
+  }
+
+  // =====================================================================
+  //  LÃI / LỖ TRUNG TÂM (admin)
+  // =====================================================================
+  function ensureProfitDates() { if (!$("proFrom").value || !$("proTo").value) { setProfitMonth(); runProfit(); } }
+  function setProfitMonth() {
+    const now = startOfToday();
+    $("proFrom").value = dmy(new Date(now.getFullYear(), now.getMonth(), 1));
+    $("proTo").value = dmy(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  }
+  async function runProfit() {
+    const from = dmyToYmd($("proFrom").value), to = dmyToYmd($("proTo").value);
+    if (!from || !to) return toast("Nhập khoảng ngày hợp lệ.", "err");
+    if (from > to) return toast("Ngày bắt đầu phải trước ngày kết thúc.", "err");
+    $("profitResult").innerHTML = '<div class="state">Đang tính…</div>';
+    const income = allPayments.filter((p) => { const d = String(p.paid_at).slice(0, 10); return d >= from && d <= to; }).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const { data: scheds } = await B.listSchedules({ from, to, teacherId: null });
+    let salary = 0;
+    (scheds || []).forEach((s) => { if (s.teacher_present === true) salary += teacherPayFor(teachersById[s.teacher_id], s.lesson_type || "ca_nhan"); });
+    const profit = income - salary;
+    $("profitResult").innerHTML =
+      `<div class="profit-cards">` +
+      profitCard("Tổng học phí thu", money(income), "good", "💰") +
+      profitCard("Tổng lương giáo viên", money(salary), "warn", "👨‍🏫") +
+      profitCard(profit >= 0 ? "LÃI" : "LỖ", money(Math.abs(profit)), profit >= 0 ? "primary" : "bad", profit >= 0 ? "📈" : "📉") +
+      `</div>` +
+      `<p class="hint" style="margin-top:14px;">Kỳ ${dmy(parseYmd(from))} – ${dmy(parseYmd(to))} · Lãi = Thu (${money(income)}) − Lương (${money(salary)}) = <b>${money(profit)}</b></p>`;
+  }
+  function profitCard(label, value, cls, icon) {
+    return `<div class="profit-card ${cls}"><div class="pc-ic">${icon}</div><div class="pc-label">${label}</div><div class="pc-value">${value}</div></div>`;
   }
 
   // =====================================================================
@@ -1481,10 +1602,20 @@
     $("addStudentBtn").addEventListener("click", () => openStudentModal(null));
     $("studentSearch").addEventListener("input", renderStudents);
     $("studentList").addEventListener("click", (e) => {
-      const ed = e.target.closest("[data-stedit]"), de = e.target.closest("[data-stdel]");
-      if (ed) openStudentModal(studentsById[ed.getAttribute("data-stedit")]);
+      const ed = e.target.closest("[data-stedit]"), de = e.target.closest("[data-stdel]"), pa = e.target.closest("[data-stpay]");
+      if (pa) openPaymentModal(pa.getAttribute("data-stpay"));
+      else if (ed) openStudentModal(studentsById[ed.getAttribute("data-stedit")]);
       else if (de) deleteStudent(de.getAttribute("data-stdel"));
     });
+    // Modal học phí
+    $("payClose").addEventListener("click", closePaymentModal);
+    $("payDone").addEventListener("click", closePaymentModal);
+    $("payAdd").addEventListener("click", addPaymentRecord);
+    $("paymentModal").addEventListener("click", (e) => { if (e.target === $("paymentModal")) closePaymentModal(); });
+    $("payHistory").addEventListener("click", (e) => { const d = e.target.closest("[data-paydel]"); if (d) deletePaymentRecord(d.getAttribute("data-paydel")); });
+    // Lãi/Lỗ
+    $("proRun").addEventListener("click", runProfit);
+    $("proMonthBtn").addEventListener("click", () => { setProfitMonth(); runProfit(); });
     $("smClose").addEventListener("click", closeStudentModal);
     $("smCancel").addEventListener("click", closeStudentModal);
     $("smSave").addEventListener("click", saveStudent);
@@ -1529,8 +1660,8 @@
     $("smLessonType").addEventListener("change", () => { if (!$("smId").value) { const d = defaultTuition($("smLessonType").value); if (d) $("smFee").value = d; } });
 
     // Mask ngày/giờ + nút lịch
-    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire"].forEach((id) => maskDate($(id)));
-    ["fStart", "fEnd"].forEach((id) => maskTime($(id)));
+    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire", "payDate", "proFrom", "proTo"].forEach((id) => maskDate($(id)));
+    ["fStart", "fEnd", "payTime"].forEach((id) => maskTime($(id)));
     document.querySelectorAll(".cal-btn").forEach(wireCal);
 
     // ESC đóng modal/sidebar
@@ -1541,6 +1672,7 @@
       else if (!$("modal").classList.contains("hidden")) closeScheduleModal();
       else if (!$("studentModal").classList.contains("hidden")) closeStudentModal();
       else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();
+      else if (!$("paymentModal").classList.contains("hidden")) closePaymentModal();
       else if ($("sidebar").classList.contains("open")) closeSidebar();
     });
   }

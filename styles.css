@@ -409,6 +409,26 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .wk-list input[type="checkbox"], .wk-month input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); }
 .wk-past { color: var(--warn); font-size: 11px; font-weight: 700; }
 
+/* ===== HỌC PHÍ (lịch sử đóng) ===== */
+.pay-item { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid var(--border); }
+.pay-item:last-child { border-bottom: none; }
+.pi-main { flex: 1; min-width: 0; }
+.pi-amt { font-weight: 800; }
+.pi-sub { font-size: 12px; color: var(--muted); }
+
+/* ===== LÃI / LỖ ===== */
+.profit-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.profit-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow-sm); }
+.profit-card .pc-ic { font-size: 28px; }
+.profit-card .pc-label { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; margin-top: 6px; }
+.profit-card .pc-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+.profit-card.good .pc-value { color: var(--good); }
+.profit-card.warn .pc-value { color: var(--warn); }
+.profit-card.bad .pc-value { color: var(--bad); }
+.profit-card.primary { border-color: color-mix(in srgb, var(--primary) 40%, transparent); background: var(--info-bg); }
+.profit-card.primary .pc-value { color: var(--primary); }
+@media (max-width: 600px) { .profit-cards { grid-template-columns: 1fr; } }
+
 /* ô ngày dd/mm/yyyy + nút lịch */
 .date-wrap { position: relative; display: inline-flex; align-items: center; width: 100%; }
 .date-wrap > input[type="text"] { width: 100%; padding-right: 38px; }
