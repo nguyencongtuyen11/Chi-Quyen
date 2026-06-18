@@ -50,6 +50,18 @@
   const LESSON_TYPES = [{ key: "ca_nhan", label: "Cá nhân" }, { key: "doi", label: "Đôi" }, { key: "nhom", label: "Nhóm" }, { key: "gia_su", label: "Gia sư" }];
   function lessonTypeLabel(k) { const t = LESSON_TYPES.find((x) => x.key === k); return t ? t.label : "Cá nhân"; }
   function fillLessonTypeSelect(sel, val) { sel.innerHTML = LESSON_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join(""); sel.value = val || "ca_nhan"; }
+  function fillSubjectSelect(sel, value) {
+    let opts = '<option value="">— Chọn môn —</option>' + SUBJECTS.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    if (value && SUBJECTS.indexOf(value) < 0) opts += `<option value="${esc(value)}">${esc(value)}</option>`;
+    sel.innerHTML = opts;
+    sel.value = value || "";
+  }
+  // Tên hiển thị trên TKB: Môn + Loại lớp + Học sinh (vd "Piano Nhóm Kiên + Vinh")
+  function classTitle(s, names) {
+    const parts = [s.subject, lessonTypeLabel(s.lesson_type)];
+    if (names && names.length) parts.push(names.join(" + "));
+    return parts.filter(Boolean).join(" ");
+  }
   let settings = {};
   function defaultPay(type) { const m = settings.default_pay || {}; return Number(m[type]) || 0; }
   function defaultTuition(type) { const m = settings.default_tuition || {}; return Number(m[type]) || 0; }
@@ -546,7 +558,7 @@
   // =====================================================================
   //  THỜI KHÓA BIỂU (tuần)
   // =====================================================================
-  let allForWeek = [], attByWeek = {};
+  let allForWeek = [], attByWeek = {}, weekStudNames = {};
 
   function fillTeacherFilter() {
     const sel = $("teacherFilter"); if (!sel) return;
@@ -582,10 +594,12 @@
     allForWeek = error ? [] : (data || []);
     const ids = allForWeek.map((s) => s.id);
     const { data: atts } = await B.listAttendanceBySchedules(ids);
-    attByWeek = {};
+    attByWeek = {}; weekStudNames = {};
     (atts || []).forEach((a) => {
       const m = attByWeek[a.schedule_id] || (attByWeek[a.schedule_id] = { total: 0, present: 0, absent: 0, none: 0 });
       m.total++; if (a.present === true) m.present++; else if (a.present === false) m.absent++; else m.none++;
+      const nm = studentsById[a.student_id] && studentsById[a.student_id].full_name;
+      if (nm) (weekStudNames[a.schedule_id] = weekStudNames[a.schedule_id] || []).push(nm);
     });
     $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading");
     if (error) toast("Lỗi tải lịch: " + error.message, "err");
@@ -623,7 +637,7 @@
       : `<div class="m">${["GV: " + esc(name), s.class_name ? "Lớp " + esc(s.class_name) : "", s.room ? "📍 " + esc(s.room) : ""].filter(Boolean).join(" · ")}</div>`;
     return `<div class="mini ${done ? "att-done" : ""}">` +
       `<div class="t">${hhmm(s.start_time)}–${hhmm(s.end_time)}</div>` +
-      `<div class="s">${esc(s.subject)}</div>` +
+      `<div class="s">${esc(classTitle(s, weekStudNames[s.id]))}</div>` +
       metaLines + attSummary(s) +
       (s.note ? `<div class="m">📝 ${esc(s.note)}</div>` : "") +
       act + `</div>`;
@@ -692,6 +706,7 @@
       $("fStart").value = preset[0]; $("fEnd").value = preset[1];
     }
     fillLessonTypeSelect($("fLessonType"), isEdit ? schedule.lesson_type : "ca_nhan");
+    fillSubjectSelect($("fSubject"), isEdit ? schedule.subject : "");
 
     // Admin / chế độ migration được phép xếp lịch (và điểm danh) cho ngày quá khứ
     $("fDateNative").min = (isAdmin() || MIGRATION_MODE) ? "" : ymd(startOfToday());
@@ -942,9 +957,10 @@
     sel.innerHTML = '<option value="">— Chưa gắn —</option>' +
       teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => `<option value="${t.id}">${esc(t.full_name)}</option>`).join("");
     fillLessonTypeSelect($("smLessonType"), isEdit ? st.lesson_type : "ca_nhan");
+    fillSubjectSelect($("smSubject"), isEdit ? st.subject : "");
     if (isEdit) {
       $("smName").value = st.full_name || ""; $("smPhone").value = st.phone || ""; $("smGuardian").value = st.guardian || "";
-      $("smSubject").value = st.subject || ""; sel.value = st.teacher_id || "";
+      sel.value = st.teacher_id || "";
       $("smTotal").value = st.total_sessions || 12; $("smFee").value = st.tuition_per_session || 0;
       $("smStart").value = ymdToDmy(st.start_date); $("smStatus").value = st.status || "active"; $("smNote").value = st.note || "";
     } else {
