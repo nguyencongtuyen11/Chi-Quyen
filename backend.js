@@ -113,6 +113,13 @@
           { onConflict: "schedule_id,student_id" }
         );
       },
+      // Lưu ghi chú lý do nghỉ cho 1 học sinh trong 1 buổi (giữ nguyên present hiện có)
+      setAttendanceNote(scheduleId, studentId, note, byUserId) {
+        return sb.from("attendance").upsert(
+          { schedule_id: scheduleId, student_id: studentId, note, marked_at: nowISO(), marked_by: byUserId },
+          { onConflict: "schedule_id,student_id" }
+        );
+      },
       removeAttendance(scheduleId, studentId) {
         return sb.from("attendance").delete().eq("schedule_id", scheduleId).eq("student_id", studentId);
       },
@@ -349,6 +356,12 @@
         let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
         if (a) { a.present = present; a.marked_at = nowISO(); a.marked_by = byUserId; }
         else { a = { id: uid(), schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId }; store.attendance.push(a); }
+        save(store); return ok(a);
+      },
+      async setAttendanceNote(scheduleId, studentId, note, byUserId) {
+        let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
+        if (a) { a.note = note; a.marked_at = nowISO(); a.marked_by = byUserId; }
+        else { a = { id: uid(), schedule_id: scheduleId, student_id: studentId, present: null, note, marked_at: nowISO(), marked_by: byUserId }; store.attendance.push(a); }
         save(store); return ok(a);
       },
       async removeAttendance(scheduleId, studentId) {

@@ -474,10 +474,16 @@
     const endDt = new Date(`${s.schedule_date}T${s.end_time}`);
     const isPast = endDt < now;
     const tp = s.teacher_present;
+    // Quy tắc màu nút "Có dạy": XANH khi đủ (mọi HS đều có mặt), CAM khi vẫn dạy nhưng KHÔNG đủ HS.
+    const inClassCount = rows.length;
+    const presentCount = rows.filter((a) => a.present === true).length;
+    const allPresent = inClassCount > 0 && presentCount === inClassCount;
+    const partial = tp === true && !allPresent;
     const tpToggle =
       `<span class="tp-label">GV:</span><div class="tp-toggle" data-tp="${s.id}">` +
-      `<button class="yes ${tp === true ? "on" : ""}" data-tpv="1">Có dạy</button>` +
-      `<button class="no ${tp === false ? "on" : ""}" data-tpv="0">Nghỉ</button></div>`;
+      `<button class="yes ${tp === true ? "on" : ""}${partial ? " partial" : ""}" data-tpv="1">Có dạy</button>` +
+      `<button class="no ${tp === false ? "on" : ""}" data-tpv="0">Nghỉ</button></div>` +
+      (partial ? `<span class="tp-hint" title="Lớp không đủ học sinh – vẫn tính buổi dạy cho lương">${inClassCount ? presentCount + "/" + inClassCount + " có mặt" : "chưa có HS"}</span>` : "");
 
     const studRows = rows.length
       ? rows.map((a) => {
@@ -487,14 +493,18 @@
           const status = a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
             : a.present === false ? '<span class="att-status absent">✕ Vắng</span>'
             : '<span class="att-status none">• Chưa điểm danh</span>';
-          return `<div class="att-row">` +
+          // HS vắng -> hiện ô ghi lý do nghỉ (lưu lại để truy xuất trong PDF của HS)
+          const noteRow = a.present === false
+            ? `<div class="att-note-row"><input class="att-note-input" type="text" maxlength="200" data-attnote="${s.id}|${a.student_id}" value="${esc(a.note || "")}" placeholder="Lý do nghỉ (VD: ốm, bận, xin phép…) — lưu vào PDF của học sinh"></div>`
+            : "";
+          return `<div class="att-item"><div class="att-row">` +
             `<div class="att-name"><div class="n">${esc(nm)}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
             status +
             `<div class="att-actions">` +
             `<button class="att-btn yes ${a.present === true ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt">✓</button>` +
             `<button class="att-btn no ${a.present === false ? "on" : ""}" data-att="${s.id}|${a.student_id}|0" title="Vắng">✕</button>` +
             `<button class="att-btn rm" data-attrm="${s.id}|${a.student_id}" title="Bỏ khỏi lớp">🗑</button>` +
-            `</div></div>`;
+            `</div></div>` + noteRow + `</div>`;
         }).join("")
       : '<div class="class-empty-students">Chưa có học sinh trong lớp này.</div>';
 
@@ -528,6 +538,18 @@
     if (cur) cur.present = newVal;
     else todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: newVal });
     renderToday();
+  }
+  // Lưu ghi chú lý do nghỉ của HS (gọi khi rời ô nhập). Không re-render để không mất con trỏ.
+  async function saveAttNote(scheduleId, studentId, note) {
+    if (!canEditAttendance()) return;
+    const val = (note || "").trim() || null;
+    const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
+    if (cur && (cur.note || null) === val) return;   // không đổi -> bỏ qua
+    const { error } = await B.setAttendanceNote(scheduleId, studentId, val, user.id);
+    if (error) return toast("Lỗi lưu ghi chú: " + error.message, "err");
+    if (cur) cur.note = val;
+    else todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: false, note: val });
+    if (val) toast("Đã lưu lý do nghỉ.", "ok");
   }
   async function markTeacher(scheduleId, present) {
     if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
@@ -1096,7 +1118,8 @@
     const detailRows = rows.map((x, i) => {
       const s = x.s, d = parseYmd(s.schedule_date);
       const status = x.a.present === true ? "✓ Có mặt" : x.a.present === false ? "✕ Vắng" : "• Chưa điểm danh";
-      return `<tr><td class='num'>${i + 1}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td></tr>`;
+      const noteCell = x.a.note ? esc(x.a.note) : (x.a.present === false ? "—" : "");
+      return `<tr><td class='num'>${i + 1}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td><td>${noteCell}</td></tr>`;
     }).join("");
     const paid = paidByStudent[studentId] || { amount: 0, sessions: 0 };
     const total = st.total_sessions || 0, remaining = Math.max(0, total - present);
@@ -1127,8 +1150,8 @@
       "<div><span class='lbl'>Khóa học:</span> " + total + " buổi" + (st.start_date ? " · bắt đầu " + ymdToDmy(st.start_date) : "") + "</div>" +
       "<div><span class='lbl'>Học phí đã đóng:</span> " + money(paid.amount) + (paid.sessions ? " · " + paid.sessions + " buổi" : "") + "</div></div>" +
       "<div class='sumline'>Đã học: " + present + " buổi · Vắng: " + absent + " · Chưa điểm danh: " + none + " · Còn lại: " + remaining + "/" + total + " buổi</div>" +
-      "<table><thead><tr><th class='num'>STT</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th></tr></thead>" +
-      "<tbody>" + (detailRows || "<tr><td colspan='8' style='text-align:center;color:#888'>Chưa có buổi học nào.</td></tr>") + "</tbody></table>" +
+      "<table><thead><tr><th class='num'>STT</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>" +
+      "<tbody>" + (detailRows || "<tr><td colspan='9' style='text-align:center;color:#888'>Chưa có buổi học nào.</td></tr>") + "</tbody></table>" +
       "<div class='sign-row'><div class='col'><div class='role'>XÁC NHẬN CỦA TRUNG TÂM</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
       "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
       "</body></html>";
@@ -1664,7 +1687,9 @@
     });
     $("todayList").addEventListener("change", (e) => {
       const sel = e.target.closest("[data-addsel]");
-      if (sel) { addStudentToClass(sel.getAttribute("data-addsel"), sel.value); }
+      if (sel) { addStudentToClass(sel.getAttribute("data-addsel"), sel.value); return; }
+      const note = e.target.closest("[data-attnote]");
+      if (note) { const [sid, stid] = note.getAttribute("data-attnote").split("|"); saveAttNote(sid, stid, note.value); }
     });
     // Hôm nay — điều hướng ngày điểm danh
     document.querySelectorAll("[data-attnav]").forEach((btn) =>

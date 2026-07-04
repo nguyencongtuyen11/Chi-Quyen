@@ -208,15 +208,17 @@ svg { display: block; }
 .cc-info { min-width: 0; flex: 1; }
 .cc-info .cc-subj { font-weight: 800; font-size: 15px; }
 .cc-info .cc-meta { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
-.cc-tpresent { display: flex; align-items: center; gap: 6px; }
+.cc-tpresent { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cc-body { padding: 8px 10px; }
 
 /* điểm danh giáo viên (toggle) */
 .tp-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .tp-toggle button { background: none; border: none; padding: 6px 12px; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; font-family: inherit; }
 .tp-toggle button.on.yes { background: var(--good); color: #06210f; }
+.tp-toggle button.on.yes.partial { background: var(--warn); color: #2a1500; }
 .tp-toggle button.on.no  { background: var(--bad); color: #2a0608; }
 .tp-label { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.tp-hint { font-size: 10.5px; font-weight: 800; color: var(--warn); white-space: nowrap; }
 
 /* dòng học sinh */
 .att-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 10px; }
@@ -233,6 +235,12 @@ svg { display: block; }
 .att-btn.yes.on { background: var(--good); color: #06210f; border-color: transparent; }
 .att-btn.no.on { background: var(--bad); color: #2a0608; border-color: transparent; }
 .att-btn:hover { border-color: var(--primary); }
+/* mỗi học sinh = 1 khối (dòng điểm danh + ô ghi chú lý do nghỉ) */
+.att-item + .att-item { border-top: 1px solid var(--border); }
+.att-note-row { padding: 0 8px 9px 8px; }
+.att-note-input { width: 100%; border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); background: var(--bg-soft); color: var(--text); border-radius: 9px; padding: 8px 11px; font-size: 12.5px; font-family: inherit; }
+.att-note-input::placeholder { color: var(--muted-2); }
+.att-note-input:focus { outline: none; border-color: var(--warn); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
 .class-empty-students { color: var(--muted-2); font-size: 13px; padding: 12px; text-align: center; }
 .cc-foot { padding: 8px 14px 12px; }
 .add-stud-row { display: flex; gap: 8px; align-items: center; }

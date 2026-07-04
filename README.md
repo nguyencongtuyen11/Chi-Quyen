@@ -89,7 +89,7 @@ Tính năng "Quên mật khẩu" gửi email chứa **liên kết đặt lại**
 | `teachers` | Danh sách giáo viên (roster). Có `pay_per_session` (lương mỗi buổi), `user_id` để gắn tài khoản. |
 | `students` | Học sinh + khóa học: `total_sessions` (số buổi của khóa), `tuition_per_session` (học phí/buổi), `status`. |
 | `schedules` | Buổi học theo ngày, gắn vào `teachers`. Có `teacher_present` (điểm danh giáo viên). |
-| `attendance` | Điểm danh **học sinh** từng buổi: `present` = null (chưa) / true (có mặt) / false (vắng). |
+| `attendance` | Điểm danh **học sinh** từng buổi: `present` = null (chưa) / true (có mặt) / false (vắng); `note` = ghi chú lý do nghỉ (hiện trong PDF của học sinh). |
 
 **Cách tính:**
 - Buổi học sinh đã học = số dòng `attendance.present = true` của em đó. **Còn lại** = `total_sessions − đã học`.
