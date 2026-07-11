@@ -1401,13 +1401,15 @@
       const downgraded = eff !== nominal;
       if (downgraded) downgradeCount++;
       const ltCell = downgraded ? lessonTypeLabel(nominal) + " <span class='warn-cell'>→ " + lessonTypeLabel(eff) + "</span>" : lessonTypeLabel(nominal);
-      const rate = teacherPayFor(t, eff);
+      const nominalRate = teacherPayFor(t, nominal);  // Đơn giá = giá chuẩn theo loại lớp gốc (thu HP)
+      const actualRate = teacherPayFor(t, eff);        // Lương buổi = lương thực trả GV (đã hạ bậc)
       const sizeCell = g.enrolled ? (hasAbsent ? "<span class='warn-cell'>" + g.attending + "/" + g.enrolled + "</span>" : g.attending + "/" + g.enrolled) : "—";
       const noteCell = absents.length ? absents.join("; ") : "";
+      const salaryCell = downgraded ? "<span class='warn-cell'>" + money(actualRate) + "</span>" : money(actualRate);
       return `<tr class='${hasAbsent ? "row-partial" : ""}'><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
         `<td>${esc(s.subject)}</td><td>${esc(s.class_name || "")}</td><td>${ltCell}</td>` +
         `<td class='num'>${sizeCell}</td><td>${noteCell}</td>` +
-        `<td class='num'>${money(rate)}</td></tr>`;
+        `<td class='num'>${money(nominalRate)}</td><td class='num'>${salaryCell}</td></tr>`;
     }).join("");
 
     const css = "*{box-sizing:border-box;}html,body{background:#fff;}body{font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;color:#111;margin:0;padding:22px;font-size:12.5px;}" +
@@ -1438,7 +1440,7 @@
       "<tbody>" + (brkRows || "<tr><td colspan='4' style='text-align:center;color:#888'>Không có buổi dạy nào trong kỳ.</td></tr>") + "</tbody>" +
       "<tfoot><tr><td colspan='3'>TỔNG LƯƠNG</td><td class='num'>" + money(total) + "</td></tr></tfoot></table>" +
       "<div class='grand'><span>TỔNG LƯƠNG KỲ NÀY</span><span>" + money(total) + "</span></div>" +
-      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Sĩ số</th><th>HS nghỉ (lý do)</th><th class='num'>Đơn giá</th></tr></thead><tbody>" + detailRows + "</tbody></table><div class='legend'>Dòng nền cam = buổi có HS nghỉ. Cột \"Loại lớp\" có mũi tên → nghĩa là HẠ BẬC lương theo sĩ số thực học (VD Nhóm còn 2 HS → tính lương Đôi; Đôi còn 1 HS → tính lương Cá nhân). Sĩ số = số HS đi học / tổng HS trong lớp (đã trừ HS nghỉ).</div>" : "") +
+      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Sĩ số</th><th>HS nghỉ (lý do)</th><th class='num'>Đơn giá</th><th class='num'>Lương buổi</th></tr></thead><tbody>" + detailRows + "</tbody></table><div class='legend'>Dòng nền cam = buổi có HS nghỉ. <b>Đơn giá</b> = giá chuẩn theo loại lớp (thu học phí HS), giữ nguyên. <b>Lương buổi</b> = lương thực trả GV (hạ bậc theo sĩ số thực học khi HS nghỉ: VD Nhóm còn 2 HS → tính lương Đôi; Đôi còn 1 HS → tính lương Cá nhân). Sĩ số = số HS đi học / tổng HS trong lớp.</div>" : "") +
       "<div class='sign-row'><div class='col'><div class='role'>NGƯỜI LẬP BẢNG</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div>" +
       "<div class='col'><div class='role'>NGƯỜI NHẬN</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
       "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
