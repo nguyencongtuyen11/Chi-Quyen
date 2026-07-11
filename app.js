@@ -71,6 +71,28 @@
     if (r[type] != null && r[type] !== "") return Number(r[type]) || 0;
     return Number(teacher.pay_per_session) || 0;
   }
+  // Loại lớp HIỆU DỤNG theo sĩ số thực học: HS nghỉ -> lớp hạ bậc -> lương theo bậc thấp hơn.
+  // 1 HS học -> Cá nhân, 2 -> Đôi, >=3 -> Nhóm. Chỉ HẠ bậc (không nâng); Gia sư giữ nguyên.
+  // Chỉ hạ bậc khi CÓ HS nghỉ (present=false). HS chưa điểm danh vẫn coi là có học -> không trừ oan.
+  const LT_TIER = { ca_nhan: 1, doi: 2, nhom: 3 };
+  const TIER_LT = { 1: "ca_nhan", 2: "doi", 3: "nhom" };
+  function headTier(n) { return n >= 3 ? 3 : (n <= 1 ? 1 : 2); }
+  function effectiveLessonType(lessonType, attending, absent) {
+    const lt = lessonType || "ca_nhan";
+    if (!(lt in LT_TIER) || !absent) return lt;             // Gia sư hoặc không ai nghỉ -> giữ nguyên
+    return TIER_LT[Math.min(LT_TIER[lt], headTier(attending))];
+  }
+  // Lương 1 buổi = giá của loại lớp HIỆU DỤNG (đã hạ bậc theo sĩ số thực học)
+  function teacherPayForSession(teacher, lessonType, attending, absent) {
+    return teacherPayFor(teacher, effectiveLessonType(lessonType, attending, absent));
+  }
+  // Gom điểm danh 1 buổi -> {enrolled, present, absent, attending}
+  function attendanceAgg(rows) {
+    rows = rows || [];
+    let present = 0, absent = 0;
+    rows.forEach((a) => { if (a.present === true) present++; else if (a.present === false) absent++; });
+    return { enrolled: rows.length, present, absent, attending: rows.length - absent };
+  }
   // Sinh ô nhập lương theo loại lớp (động theo LESSON_TYPES)
   function renderPayRateInputs(container, rates) {
     rates = rates || {};
@@ -1177,8 +1199,12 @@
     $("profitResult").innerHTML = '<div class="state">Đang tính…</div>';
     const income = allPayments.filter((p) => { const d = String(p.paid_at).slice(0, 10); return d >= from && d <= to; }).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const { data: scheds } = await B.listSchedules({ from, to, teacherId: null });
+    const taught = (scheds || []).filter((s) => s.teacher_present === true);
+    const rowsBy = {};
+    const { data: pAtts } = await B.listAttendanceBySchedules(taught.map((s) => s.id));
+    (pAtts || []).forEach((a) => { (rowsBy[a.schedule_id] || (rowsBy[a.schedule_id] = [])).push(a); });
     let salary = 0;
-    (scheds || []).forEach((s) => { if (s.teacher_present === true) salary += teacherPayFor(teachersById[s.teacher_id], s.lesson_type || "ca_nhan"); });
+    taught.forEach((s) => { const g = attendanceAgg(rowsBy[s.id]); salary += teacherPayForSession(teachersById[s.teacher_id], s.lesson_type || "ca_nhan", g.attending, g.absent); });
     const profit = income - salary;
     $("profitResult").innerHTML =
       `<div class="profit-cards">` +
@@ -1304,12 +1330,17 @@
     $("salaryResult").innerHTML = '<div class="state">Đang tính…</div>';
     const { data, error } = await B.listSchedules({ from, to, teacherId: null });
     if (error) { $("salaryResult").innerHTML = '<div class="empty">Lỗi tải dữ liệu.</div>'; return; }
+    // Sĩ số thực học từng buổi (để hạ bậc lương khi HS nghỉ)
+    const taughtIds = (data || []).filter((s) => s.teacher_present === true).map((s) => s.id);
+    const rowsBy = {};
+    const { data: sAtts } = await B.listAttendanceBySchedules(taughtIds);
+    (sAtts || []).forEach((a) => { (rowsBy[a.schedule_id] || (rowsBy[a.schedule_id] = [])).push(a); });
     const rows = {};
     teachers.forEach((t) => (rows[t.id] = { t: t, name: t.full_name, counts: {}, off: 0, planned: 0 }));
     (data || []).forEach((s) => {
       const r = rows[s.teacher_id]; if (!r) return;
       r.planned++;
-      if (s.teacher_present === true) { const k = s.lesson_type || "ca_nhan"; r.counts[k] = (r.counts[k] || 0) + 1; }
+      if (s.teacher_present === true) { const g = attendanceAgg(rowsBy[s.id]); const k = effectiveLessonType(s.lesson_type || "ca_nhan", g.attending, g.absent); r.counts[k] = (r.counts[k] || 0) + 1; }
       else if (s.teacher_present === false) r.off++;
     });
     const list = Object.values(rows).sort((a, b) => a.name.localeCompare(b.name, "vi"));
@@ -1341,8 +1372,12 @@
     if (error) return toast("Lỗi tải dữ liệu: " + error.message, "err");
     const ss = (data || []).filter((s) => s.teacher_present === true)
       .sort((a, b) => (a.schedule_date + a.start_time).localeCompare(b.schedule_date + b.start_time));
-    const counts = {}; let total = 0;
-    ss.forEach((s) => { const k = s.lesson_type || "ca_nhan"; counts[k] = (counts[k] || 0) + 1; total += teacherPayFor(t, k); });
+    // Điểm danh HS từng buổi -> sĩ số, lý do nghỉ, và HẠ BẬC lương theo sĩ số thực đến
+    const attBySched = {};
+    const { data: salAtts } = await B.listAttendanceBySchedules(ss.map((s) => s.id));
+    (salAtts || []).forEach((a) => { (attBySched[a.schedule_id] || (attBySched[a.schedule_id] = [])).push(a); });
+    const counts = {}; let total = 0;   // đếm & cộng lương theo loại lớp HIỆU DỤNG
+    ss.forEach((s) => { const g = attendanceAgg(attBySched[s.id]); const k = effectiveLessonType(s.lesson_type || "ca_nhan", g.attending, g.absent); counts[k] = (counts[k] || 0) + 1; total += teacherPayFor(t, k); });
     const now = new Date();
     const logoUrl = new URL("logo-wordmark.png", location.href).href;
 
@@ -1350,28 +1385,29 @@
       const c = counts[lt.key], rate = teacherPayFor(t, lt.key);
       return `<tr><td>${lt.label}</td><td class='num'>${c}</td><td class='num'>${money(rate)}</td><td class='num'>${money(c * rate)}</td></tr>`;
     }).join("");
-    // Đồng bộ điểm danh HS vào phiếu lương: sĩ số từng buổi + lý do HS nghỉ
-    const attBySched = {};
-    const { data: salAtts } = await B.listAttendanceBySchedules(ss.map((s) => s.id));
-    (salAtts || []).forEach((a) => { (attBySched[a.schedule_id] || (attBySched[a.schedule_id] = [])).push(a); });
-    let partialCount = 0;
+    let absentSessions = 0, downgradeCount = 0;
     const detailRows = ss.map((s) => {
       const d = parseYmd(s.schedule_date);
       const arows = attBySched[s.id] || [];
-      const totalStud = arows.length;
-      const present = arows.filter((a) => a.present === true).length;
+      const g = attendanceAgg(arows);
       const absents = arows.filter((a) => a.present === false).map((a) => {
         const nm = (studentsById[a.student_id] && studentsById[a.student_id].full_name) || "HS";
         return a.note ? esc(nm) + " (" + esc(a.note) + ")" : esc(nm);
       });
-      const full = totalStud > 0 && present === totalStud;   // đủ = mọi HS có mặt (khớp nút cam ở điểm danh)
-      if (!full) partialCount++;
-      const sizeCell = totalStud ? (full ? present + "/" + totalStud : "<span class='warn-cell'>" + present + "/" + totalStud + "</span>") : "—";
-      const noteCell = absents.length ? absents.join("; ") : (full ? "" : "—");
-      return `<tr class='${full ? "" : "row-partial"}'><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
-        `<td>${esc(s.subject)}</td><td>${esc(s.class_name || "")}</td><td>${lessonTypeLabel(s.lesson_type)}</td>` +
+      const hasAbsent = g.absent > 0;
+      if (hasAbsent) absentSessions++;
+      const nominal = s.lesson_type || "ca_nhan";
+      const eff = effectiveLessonType(nominal, g.attending, g.absent);
+      const downgraded = eff !== nominal;
+      if (downgraded) downgradeCount++;
+      const ltCell = downgraded ? lessonTypeLabel(nominal) + " <span class='warn-cell'>→ " + lessonTypeLabel(eff) + "</span>" : lessonTypeLabel(nominal);
+      const rate = teacherPayFor(t, eff);
+      const sizeCell = g.enrolled ? (hasAbsent ? "<span class='warn-cell'>" + g.attending + "/" + g.enrolled + "</span>" : g.attending + "/" + g.enrolled) : "—";
+      const noteCell = absents.length ? absents.join("; ") : "";
+      return `<tr class='${hasAbsent ? "row-partial" : ""}'><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
+        `<td>${esc(s.subject)}</td><td>${esc(s.class_name || "")}</td><td>${ltCell}</td>` +
         `<td class='num'>${sizeCell}</td><td>${noteCell}</td>` +
-        `<td class='num'>${money(teacherPayFor(t, s.lesson_type || "ca_nhan"))}</td></tr>`;
+        `<td class='num'>${money(rate)}</td></tr>`;
     }).join("");
 
     const css = "*{box-sizing:border-box;}html,body{background:#fff;}body{font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;color:#111;margin:0;padding:22px;font-size:12.5px;}" +
@@ -1396,13 +1432,13 @@
       "<div class='report-gen'>Lập lúc " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + " ngày " + dmy(now) + "</div>" +
       "<div class='info'><div><span class='lbl'>Họ và tên giáo viên:</span> <b>" + esc(t.full_name) + "</b></div>" +
       (t.specialty ? "<div><span class='lbl'>Chuyên môn:</span> " + esc(t.specialty) + "</div>" : "") +
-      "<div><span class='lbl'>Tổng số buổi đã dạy:</span> " + ss.length + " buổi" + (partialCount ? " <span style='color:#b26a00;font-weight:700'>(trong đó " + partialCount + " buổi không đủ HS)</span>" : "") + "</div></div>" +
+      "<div><span class='lbl'>Tổng số buổi đã dạy:</span> " + ss.length + " buổi" + (absentSessions ? " <span style='color:#b26a00;font-weight:700'>(trong đó " + absentSessions + " buổi có HS nghỉ" + (downgradeCount ? ", " + downgradeCount + " buổi hạ bậc lương" : "") + ")</span>" : "") + "</div></div>" +
       "<h2 class='section-title'>1. Bảng lương theo loại lớp</h2>" +
       "<table><thead><tr><th>Loại lớp</th><th class='num'>Số buổi</th><th class='num'>Đơn giá</th><th class='num'>Thành tiền</th></tr></thead>" +
       "<tbody>" + (brkRows || "<tr><td colspan='4' style='text-align:center;color:#888'>Không có buổi dạy nào trong kỳ.</td></tr>") + "</tbody>" +
       "<tfoot><tr><td colspan='3'>TỔNG LƯƠNG</td><td class='num'>" + money(total) + "</td></tr></tfoot></table>" +
       "<div class='grand'><span>TỔNG LƯƠNG KỲ NÀY</span><span>" + money(total) + "</span></div>" +
-      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Sĩ số</th><th>HS nghỉ (lý do)</th><th class='num'>Đơn giá</th></tr></thead><tbody>" + detailRows + "</tbody></table><div class='legend'>Dòng nền cam = buổi lớp không đủ học sinh (vẫn tính đủ lương buổi dạy). Sĩ số = số HS có mặt / tổng HS trong lớp.</div>" : "") +
+      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Sĩ số</th><th>HS nghỉ (lý do)</th><th class='num'>Đơn giá</th></tr></thead><tbody>" + detailRows + "</tbody></table><div class='legend'>Dòng nền cam = buổi có HS nghỉ. Cột \"Loại lớp\" có mũi tên → nghĩa là HẠ BẬC lương theo sĩ số thực học (VD Nhóm còn 2 HS → tính lương Đôi; Đôi còn 1 HS → tính lương Cá nhân). Sĩ số = số HS đi học / tổng HS trong lớp (đã trừ HS nghỉ).</div>" : "") +
       "<div class='sign-row'><div class='col'><div class='role'>NGƯỜI LẬP BẢNG</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div>" +
       "<div class='col'><div class='role'>NGƯỜI NHẬN</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
       "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
