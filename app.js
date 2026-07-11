@@ -1350,10 +1350,27 @@
       const c = counts[lt.key], rate = teacherPayFor(t, lt.key);
       return `<tr><td>${lt.label}</td><td class='num'>${c}</td><td class='num'>${money(rate)}</td><td class='num'>${money(c * rate)}</td></tr>`;
     }).join("");
+    // Đồng bộ điểm danh HS vào phiếu lương: sĩ số từng buổi + lý do HS nghỉ
+    const attBySched = {};
+    const { data: salAtts } = await B.listAttendanceBySchedules(ss.map((s) => s.id));
+    (salAtts || []).forEach((a) => { (attBySched[a.schedule_id] || (attBySched[a.schedule_id] = [])).push(a); });
+    let partialCount = 0;
     const detailRows = ss.map((s) => {
       const d = parseYmd(s.schedule_date);
-      return `<tr><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
+      const arows = attBySched[s.id] || [];
+      const totalStud = arows.length;
+      const present = arows.filter((a) => a.present === true).length;
+      const absents = arows.filter((a) => a.present === false).map((a) => {
+        const nm = (studentsById[a.student_id] && studentsById[a.student_id].full_name) || "HS";
+        return a.note ? esc(nm) + " (" + esc(a.note) + ")" : esc(nm);
+      });
+      const full = totalStud > 0 && present === totalStud;   // đủ = mọi HS có mặt (khớp nút cam ở điểm danh)
+      if (!full) partialCount++;
+      const sizeCell = totalStud ? (full ? present + "/" + totalStud : "<span class='warn-cell'>" + present + "/" + totalStud + "</span>") : "—";
+      const noteCell = absents.length ? absents.join("; ") : (full ? "" : "—");
+      return `<tr class='${full ? "" : "row-partial"}'><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td>` +
         `<td>${esc(s.subject)}</td><td>${esc(s.class_name || "")}</td><td>${lessonTypeLabel(s.lesson_type)}</td>` +
+        `<td class='num'>${sizeCell}</td><td>${noteCell}</td>` +
         `<td class='num'>${money(teacherPayFor(t, s.lesson_type || "ca_nhan"))}</td></tr>`;
     }).join("");
 
@@ -1367,6 +1384,7 @@
       "table{width:100%;border-collapse:collapse;margin-bottom:6px;}th,td{border:1px solid #bbb;padding:6px 8px;text-align:left;}" +
       "th{background:#eef0fb;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;}td.num,th.num{text-align:right;white-space:nowrap;}" +
       "tfoot td{font-weight:800;background:#f6f6fa;}h2.section-title{font-size:14px;margin:16px 0 6px;}" +
+      ".row-partial td{background:#fff5e6;}.warn-cell{color:#b26a00;font-weight:800;}.legend{font-size:10.5px;color:#777;margin:5px 0 0;font-style:italic;}" +
       ".grand{margin-top:14px;padding:11px 14px;background:#eef0fb;border:1px solid #c9c9e6;border-radius:8px;font-size:15px;font-weight:800;display:flex;justify-content:space-between;}" +
       ".sign-row{display:flex;justify-content:space-around;margin-top:36px;text-align:center;font-size:12px;}.sign-row .col{width:45%;}" +
       ".sign-row .role{font-weight:700;}.sign-row .hint{font-size:10px;color:#888;font-style:italic;}.sign-row .space{height:58px;}" +
@@ -1378,13 +1396,13 @@
       "<div class='report-gen'>Lập lúc " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + " ngày " + dmy(now) + "</div>" +
       "<div class='info'><div><span class='lbl'>Họ và tên giáo viên:</span> <b>" + esc(t.full_name) + "</b></div>" +
       (t.specialty ? "<div><span class='lbl'>Chuyên môn:</span> " + esc(t.specialty) + "</div>" : "") +
-      "<div><span class='lbl'>Tổng số buổi đã dạy:</span> " + ss.length + " buổi</div></div>" +
+      "<div><span class='lbl'>Tổng số buổi đã dạy:</span> " + ss.length + " buổi" + (partialCount ? " <span style='color:#b26a00;font-weight:700'>(trong đó " + partialCount + " buổi không đủ HS)</span>" : "") + "</div></div>" +
       "<h2 class='section-title'>1. Bảng lương theo loại lớp</h2>" +
       "<table><thead><tr><th>Loại lớp</th><th class='num'>Số buổi</th><th class='num'>Đơn giá</th><th class='num'>Thành tiền</th></tr></thead>" +
       "<tbody>" + (brkRows || "<tr><td colspan='4' style='text-align:center;color:#888'>Không có buổi dạy nào trong kỳ.</td></tr>") + "</tbody>" +
       "<tfoot><tr><td colspan='3'>TỔNG LƯƠNG</td><td class='num'>" + money(total) + "</td></tr></tfoot></table>" +
       "<div class='grand'><span>TỔNG LƯƠNG KỲ NÀY</span><span>" + money(total) + "</span></div>" +
-      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Đơn giá</th></tr></thead><tbody>" + detailRows + "</tbody></table>" : "") +
+      (ss.length ? "<h2 class='section-title'>2. Chi tiết buổi dạy</h2><table><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Lớp</th><th>Loại lớp</th><th class='num'>Sĩ số</th><th>HS nghỉ (lý do)</th><th class='num'>Đơn giá</th></tr></thead><tbody>" + detailRows + "</tbody></table><div class='legend'>Dòng nền cam = buổi lớp không đủ học sinh (vẫn tính đủ lương buổi dạy). Sĩ số = số HS có mặt / tổng HS trong lớp.</div>" : "") +
       "<div class='sign-row'><div class='col'><div class='role'>NGƯỜI LẬP BẢNG</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div>" +
       "<div class='col'><div class='role'>NGƯỜI NHẬN</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
       "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
