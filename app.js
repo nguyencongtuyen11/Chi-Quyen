@@ -144,6 +144,7 @@
     }
     if (patch === null) list.splice(list.indexOf(r), 1); else Object.assign(r, patch);
     rebuildCourseInfo(studentId);
+    saveSnapshot();
   }
   // không dấu, chữ thường — để tìm "nguyen an" ra "Nguyễn An"
   function norm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "d").toLowerCase().trim(); }
@@ -326,9 +327,9 @@
   // Màn chờ nốt nhạc: ẩn khi đã có màn hình để xem (đăng nhập, hoặc lịch hôm nay đã tải xong).
   // Giữ tối thiểu ~1,1s để nốt nhạc kịp bay vào, tránh chớp khi tải nhanh; tự ẩn sau 15s phòng treo.
   const splashStart = performance.now();
-  function hideSplash() {
+  function hideSplash(fast) {   // fast: đã có bản lưu trên máy -> chỉ giữ nốt nhạc ~0,6s
     const el = $("splash"); if (!el || el.classList.contains("done")) return;
-    const wait = reduceMotion() ? 0 : Math.max(0, 1100 - (performance.now() - splashStart));
+    const wait = reduceMotion() ? 0 : Math.max(0, (fast ? 600 : 1100) - (performance.now() - splashStart));
     setTimeout(() => { el.classList.add("done"); setTimeout(() => el.remove(), 600); }, wait);
   }
   setTimeout(hideSplash, 15000);
@@ -412,8 +413,23 @@
     if (currentUid === user.id) return;
     currentUid = user.id;
     const loginId = currentUid;
+    let fromSnapshot = false;
     try {
-    // Hồ sơ, dữ liệu chung và lịch tuần này tải CÙNG LÚC (trước đây xếp hàng nối tiếp ~3 lượt chờ Supabase)
+    // 1) Bản lưu trên máy (vài ms): có thì hiện app NGAY như app thật, không chờ Supabase (máy chủ ở Mumbai)
+    const snap = await idb.get("snap:" + loginId);
+    if (currentUid !== loginId) return;
+    if (snap && snap.v === SNAP_VERSION && snap.profile && snap.raw) {
+      myProfile = snap.profile;
+      applyGlobals(snap.raw);
+      (snap.today || []).forEach(([k, v]) => todayCache.set(k, v));
+      (snap.week || []).forEach(([k, v]) => weekCache.set(k, v));
+      showAppShell();
+      initSettingsUI();
+      switchView("today");
+      hideSplash(true);
+      fromSnapshot = true;
+    }
+    // 2) Hồ sơ, dữ liệu chung và lịch tuần này tải CÙNG LÚC từ Supabase (cập nhật đè lên bản lưu)
     const profileP = traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user))
       .then((p) => { if (currentUid === loginId) myProfile = p; return p; });
     const globalsP = loadGlobals(profileP);
@@ -422,31 +438,40 @@
     const profile = await profileP;
     if (currentUid !== loginId) return;
     myProfile = profile;
-    hideAuth();
-    $("app").classList.remove("hidden");
-    applyRoleUI();
-    $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
-
-    const name = (myProfile && myProfile.full_name) || user.email;
-    $("accName").textContent = name;
-    $("accAvatar").textContent = initials(name);
-    $("accRole").innerHTML = isAdmin() ? 'Quản trị viên <span class="badge-admin">ADMIN</span>' : "Giáo viên";
+    if (!fromSnapshot) {
+      showAppShell();
+      $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
+    } else showAppShell();   // vai trò/tên có thể đã đổi
 
     await globalsP;
     if (currentUid !== loginId) return;
     applyRoleUI();
     initSettingsUI();
-    switchView("today");
+    switchView(fromSnapshot ? currentView : "today");   // vẽ lại trang đang xem bằng dữ liệu mới
     hideSplash();
     startReminderLoop();
     refreshDevicePush();
     } catch (error) {
       if (currentUid !== loginId) return;
+      if (fromSnapshot) {   // mất mạng nhưng đã có bản lưu -> vẫn dùng được, chỉ báo nhẹ
+        toast("Không kết nối được máy chủ — đang hiển thị dữ liệu đã lưu trên máy.", "err");
+        startReminderLoop();
+        return;
+      }
       currentUid = null;
       $("app").classList.add("hidden");
       showAuth(); setAuthMode('login');
       authErr('Không thể tải dữ liệu: ' + (error.message || error));
     }
+  }
+  function showAppShell() {
+    hideAuth();
+    $("app").classList.remove("hidden");
+    applyRoleUI();
+    const name = (myProfile && myProfile.full_name) || user.email;
+    $("accName").textContent = name;
+    $("accAvatar").textContent = initials(name);
+    $("accRole").innerHTML = isAdmin() ? 'Quản trị viên <span class="badge-admin">ADMIN</span>' : "Giáo viên";
   }
 
   function onSignedOut() {
@@ -454,7 +479,8 @@
     user = null; currentUid = null; myProfile = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
-    todayCache.clear();
+    todayCache.clear(); weekCache.clear();
+    clearSnapshots();   // xóa bản lưu trên máy khi đăng xuất
     todayRequest++; weekRequest++; profitRequest++; salaryRequest++;
     allPayments = []; paidByStudent = {}; coursesByStudent = {}; attRowsByStudent = {}; courseInfo = {}; settings = {}; teacherStatsById = {};
     todayScheds = []; todayAtt = []; allForWeek = []; attByWeek = {}; weekStudNames = {}; weekAbsentNames = {};
@@ -560,36 +586,83 @@
     const failed = [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes].find(result => result.error);
     if (failed) throw failed.error;
     if (currentUid !== loadUid) return;
+    applyGlobals({ teachers: tRes.data, students: sRes.data, profiles: pRes.data, settings: setRes.data, teacherStats: tsRes.data,
+      courses: coRes.data, payments: payRes.data, att: attRes.data });
+    saveSnapshot();
+  }
+  // Đổ dữ liệu chung vào app — dùng chung cho dữ liệu mới từ Supabase và bản lưu trên máy (mở app tức thì)
+  function applyGlobals(raw) {
     coursesByStudent = {};
-    (coRes.data || []).forEach((c) => (coursesByStudent[c.student_id] || (coursesByStudent[c.student_id] = [])).push(c));
+    (raw.courses || []).forEach((c) => (coursesByStudent[c.student_id] || (coursesByStudent[c.student_id] = [])).push(c));
     Object.values(coursesByStudent).forEach((l) => l.sort((a, b) => a.seq - b.seq));
-    settings = setRes.data || {};
-    teacherStatsById = tsRes.data || {};
-    teachers = tRes.data || [];
+    settings = raw.settings || {};
+    teacherStatsById = raw.teacherStats || {};
+    teachers = raw.teachers || [];
     teachersById = {}; teachers.forEach((t) => (teachersById[t.id] = t));
-    students = (sRes.data || []).slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"));
+    students = (raw.students || []).slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"));
     studentsById = {}; students.forEach((s) => (studentsById[s.id] = s));
-    profilesList = pRes.data || [];
+    profilesList = raw.profiles || [];
     profilesById = {}; profilesList.forEach((p) => (profilesById[p.id] = p));
     presentByStudent = {};
-    (attRes.data || []).forEach(a => { if (a.present === true) presentByStudent[a.student_id] = (presentByStudent[a.student_id] || 0) + 1; });
+    (raw.att || []).forEach(a => { if (a.present === true) presentByStudent[a.student_id] = (presentByStudent[a.student_id] || 0) + 1; });
     myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
 
     allPayments = []; paidByStudent = {};
     attRowsByStudent = {}; courseInfo = {};
     // điểm danh kèm ngày -> chia buổi vào khóa (giáo viên chỉ đọc được lớp mình dạy -> tính trên các buổi đó)
-    if (currentUid !== loadUid) return;
     if (isAdmin()) {
-      allPayments = payRes.data || [];
+      allPayments = raw.payments || [];
       allPayments.forEach((p) => {
         const m = paidByStudent[p.student_id] || (paidByStudent[p.student_id] = { amount: 0, sessions: 0 });
         m.amount += Number(p.amount) || 0; m.sessions += Number(p.sessions) || 0;
       });
     }
-    (attRes.data || []).forEach((r) => (attRowsByStudent[r.student_id] || (attRowsByStudent[r.student_id] = [])).push(r));
+    (raw.att || []).forEach((r) => (attRowsByStudent[r.student_id] || (attRowsByStudent[r.student_id] = [])).push(r));
     students.forEach((s) => rebuildCourseInfo(s.id));
     bumpStudents();
   }
+
+  // =====================================================================
+  //  BẢN LƯU TRÊN MÁY (IndexedDB) — mở app là hiện ngay dữ liệu lần trước, rồi cập nhật ở nền
+  //  Mỗi tài khoản 1 bản ("snap:<uid>"); đăng xuất là xóa sạch (máy dùng chung không lộ dữ liệu).
+  // =====================================================================
+  const SNAP_VERSION = 1;
+  const idb = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error("IndexedDB không khả dụng"));
+      const r = indexedDB.open("openmusic-cache", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    }));
+    const run = (mode, fn) => open().then((db) => new Promise((resolve, reject) => {
+      const t = db.transaction("kv", mode), req = fn(t.objectStore("kv"));
+      t.oncomplete = () => resolve(req && req.result);
+      t.onerror = t.onabort = () => reject(t.error);
+    }));
+    return {
+      get: (k) => run("readonly", (s) => s.get(k)).catch(() => null),
+      set: (k, v) => run("readwrite", (s) => s.put(v, k)).catch(() => {}),
+      clear: () => run("readwrite", (s) => s.clear()).catch(() => {}),
+    };
+  })();
+  let snapTimer = null;
+  function saveSnapshot() {
+    if (!currentUid || !myProfile || !students.length && !teachers.length) return;
+    const uid = currentUid;
+    clearTimeout(snapTimer);
+    snapTimer = setTimeout(() => {   // gom nhiều thay đổi liên tiếp thành 1 lần ghi
+      if (uid !== currentUid) return;
+      idb.set("snap:" + uid, {
+        v: SNAP_VERSION, at: Date.now(), profile: myProfile,
+        raw: { teachers, students, profiles: profilesList, settings, teacherStats: teacherStatsById,
+          courses: Object.values(coursesByStudent).flat(), payments: allPayments, att: Object.values(attRowsByStudent).flat() },
+        today: [...todayCache], week: [...weekCache],
+      });
+    }, 800);
+  }
+  function clearSnapshots() { clearTimeout(snapTimer); return idb.clear(); }
 
   // hồ sơ giáo viên dùng để lọc lịch theo vai trò
   function scheduleTeacherFilter() {
@@ -740,6 +813,7 @@
     if (same) return;                 // dữ liệu không đổi -> giữ nguyên màn hình đang hiện
     entry.atts[t] = atts;
     todayCache.set(ck, entry);
+    saveSnapshot();
     renderWeekStrip(weekScheds);
     todayScheds = weekScheds.filter((s) => s.schedule_date === t);
     todayAtt = atts;
@@ -1005,7 +1079,7 @@
     if (request !== weekRequest) return;
     if (attError) { if (hit) return; $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading"); $("weekList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
     const sig = JSON.stringify([scheds, atts || []]);
-    if (!error) weekCache.set(ck, { scheds, atts: atts || [], sig });
+    if (!error) { weekCache.set(ck, { scheds, atts: atts || [], sig }); saveSnapshot(); }
     $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading");
     if (hit && hit.sig === sig) return;   // không đổi -> không vẽ lại
     applyWeekData(scheds, atts || []);
