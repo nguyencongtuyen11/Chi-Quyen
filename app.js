@@ -396,7 +396,13 @@
     currentUid = user.id;
     const loginId = currentUid;
     try {
-    const profile = await traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user));
+    // Hồ sơ, dữ liệu chung và lịch tuần này tải CÙNG LÚC (trước đây xếp hàng nối tiếp ~3 lượt chờ Supabase)
+    const profileP = traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user))
+      .then((p) => { if (currentUid === loginId) myProfile = p; return p; });
+    const globalsP = loadGlobals(profileP);
+    prefetchToday();
+    globalsP.catch(() => {});   // lỗi vẫn được bắt ở "await globalsP" bên dưới; dòng này chỉ tránh cảnh báo unhandled
+    const profile = await profileP;
     if (currentUid !== loginId) return;
     myProfile = profile;
     hideAuth();
@@ -409,7 +415,7 @@
     $("accAvatar").textContent = initials(name);
     $("accRole").innerHTML = isAdmin() ? 'Quản trị viên <span class="badge-admin">ADMIN</span>' : "Giáo viên";
 
-    await loadGlobals();
+    await globalsP;
     if (currentUid !== loginId) return;
     applyRoleUI();
     initSettingsUI();
@@ -511,17 +517,23 @@
     } finally { clearTimeout(timer); }
   }
 
-  async function loadGlobals() {
+  // pendingProfile (lúc đăng nhập): hồ sơ đang tải song song — các bảng không phụ thuộc vai trò
+  // bắt đầu tải ngay, chỉ phần riêng của admin (tài khoản, học phí) chờ biết vai trò.
+  async function loadGlobals(pendingProfile) {
     const loadUid = currentUid;
+    const adminOnly = (label, read, fallback) => {
+      const go = () => isAdmin() ? traceDataLoad(label, read) : fallback();
+      return pendingProfile ? pendingProfile.then(go) : go();
+    };
     // Start all independent reads together; attendance supplies present counts too.
     const [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes] = await Promise.all([
       traceDataLoad('Giáo viên', () => B.listTeachers()),
       traceDataLoad('Học sinh', () => B.listStudents()),
-      isAdmin() ? traceDataLoad('Tài khoản', () => B.listProfiles()) : {data: myProfile ? [myProfile] : []},
+      adminOnly('Tài khoản', () => B.listProfiles(), () => ({data: myProfile ? [myProfile] : []})),
       traceDataLoad('Cài đặt', () => B.getSettings()),
       traceDataLoad('Thống kê giáo viên', () => B.teacherStats()),
       traceDataLoad('Khóa học', () => B.listCourses()),
-      isAdmin() ? traceDataLoad('Học phí', () => B.listPayments()) : {data: []},
+      adminOnly('Học phí', () => B.listPayments(), () => ({data: []})),
       traceDataLoad('Lịch sử điểm danh', () => B.listAttendanceWithDates()),
     ]);
     if (currentUid !== loadUid) return;
@@ -606,6 +618,20 @@
   }
   function setAttDate(d) { attDate = new Date(d); attDate.setHours(0, 0, 0, 0); loadToday(); }
 
+  // Tải trước lịch tuần + điểm danh hôm nay ngay lúc đăng nhập (song song với dữ liệu chung).
+  // Không lọc giáo viên: admin mặc định xem tất cả; giáo viên đã bị RLS giới hạn lớp của mình.
+  let todayPrefetch = null;
+  function prefetchToday() {
+    const ws = startOfWeek(attDate), t = ymd(attDate);
+    const promise = B.listSchedules({ from: ymd(ws), to: ymd(addDays(ws, 6)), teacherId: null }).then(async (sr) => {
+      if (sr.error) return { error: sr.error };
+      const ids = (sr.data || []).filter((s) => s.schedule_date === t).map((s) => s.id);
+      const ar = await B.listAttendanceBySchedules(ids);
+      return ar.error ? { error: ar.error } : { scheds: sr.data || [], atts: ar.data || [] };
+    }).catch((error) => ({ error }));
+    todayPrefetch = { key: t, promise };
+  }
+
   async function loadToday() {
     const request = ++todayRequest;
     $("todayTitle").textContent = `${DOW[attDate.getDay()]}, ${attDate.getDate()} tháng ${attDate.getMonth() + 1}`;
@@ -621,16 +647,32 @@
     }
     // tải cả tuần 1 lần: vừa lấy lớp của ngày đang xem, vừa đánh dấu các ngày có lớp trên dải tuần
     const t = ymd(attDate), ws = startOfWeek(attDate);
-    const { data: weekScheds, error: scheduleError } = await B.listSchedules({ from: ymd(ws), to: ymd(addDays(ws, 6)), teacherId: tf });
+    // dùng dữ liệu tải trước lúc đăng nhập (1 lần, đúng ngày) nếu có
+    const pre = todayPrefetch && todayPrefetch.key === t ? todayPrefetch : null;
+    todayPrefetch = null;
+    const preRes = pre ? await pre.promise : null;
     if (request !== todayRequest) return;
-    if (scheduleError) { $("todayList").innerHTML = `<div class="empty">Không thể tải lịch: ${esc(scheduleError.message)}</div>`; $("todayStats").innerHTML = ""; return; }
-    renderWeekStrip(weekScheds || []);
-    todayScheds = (weekScheds || []).filter((s) => s.schedule_date === t);
-    const ids = todayScheds.map((s) => s.id);
-    const { data: atts, error: attError } = await B.listAttendanceBySchedules(ids);
-    if (request !== todayRequest) return;
-    if (attError) { $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
-    todayAtt = atts || [];
+    let weekScheds, atts = null;
+    if (preRes && !preRes.error) {
+      weekScheds = tf ? preRes.scheds.filter((s) => s.teacher_id === tf) : preRes.scheds;
+      atts = preRes.atts;
+    } else {
+      const { data, error: scheduleError } = await B.listSchedules({ from: ymd(ws), to: ymd(addDays(ws, 6)), teacherId: tf });
+      if (request !== todayRequest) return;
+      if (scheduleError) { $("todayList").innerHTML = `<div class="empty">Không thể tải lịch: ${esc(scheduleError.message)}</div>`; $("todayStats").innerHTML = ""; return; }
+      weekScheds = data || [];
+    }
+    renderWeekStrip(weekScheds);
+    todayScheds = weekScheds.filter((s) => s.schedule_date === t);
+    const ids = new Set(todayScheds.map((s) => s.id));
+    if (atts) atts = atts.filter((a) => ids.has(a.schedule_id));
+    else {
+      const { data, error: attError } = await B.listAttendanceBySchedules([...ids]);
+      if (request !== todayRequest) return;
+      if (attError) { $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
+      atts = data || [];
+    }
+    todayAtt = atts;
     renderToday();
   }
 
