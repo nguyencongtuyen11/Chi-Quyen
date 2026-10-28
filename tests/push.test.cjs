@@ -19,6 +19,19 @@ test('server reminder skips early, stale and cancelled lessons',async()=>{
  assert.equal(check({...lesson,teacher_present:false},'2026-10-28T09:30:00Z'),null);
  assert.ok(reminderFor(lesson,{...subscription,lead_minutes:0},{user_id:'u1'},'teacher',new Date('2026-10-28T11:30:15Z')));
 });
+test('trial reminder goes only to admins, at the configured lead, in Vietnam time',async()=>{
+ const {trialReminderFor}=await core();
+ const trial={id:'tr1',full_name:'Bé Khang',phone:'0912',subject:'Piano',start_at:'2026-10-29T09:00:00Z',status:'pending'}; // 16:00 VN
+ const due=new Date('2026-10-29T08:00:10Z'); // trước 60 phút
+ const p=trialReminderFor(trial,subscription,'admin',60,due);
+ assert.equal(p.start_at,'2026-10-29T09:00:00.000Z');assert.match(p.body,/^16:00 — Bé Khang/);assert.equal(p.url,'/?view=trials');
+ assert.equal(trialReminderFor(trial,subscription,'teacher',60,due),null);
+ assert.equal(trialReminderFor({...trial,status:'cancelled'},subscription,'admin',60,due),null);
+ assert.equal(trialReminderFor(trial,subscription,'admin',60,new Date('2026-10-29T07:59:00Z')),null); // quá sớm
+ assert.equal(trialReminderFor(trial,subscription,'admin',60,new Date('2026-10-29T08:06:00Z')),null); // cron trễ quá 5 phút
+ assert.equal(trialReminderFor(trial,subscription,'admin',60,new Date('2026-10-29T09:00:01Z')),null); // đã tới giờ
+ assert.equal(trialReminderFor(trial,subscription,'admin',-5,due),null);
+});
 test('subscription rejects arbitrary server destinations and malformed device keys',async()=>{
  const {validateSubscription}=await core();const keys={p256dh:'A'.repeat(87),auth:'B'.repeat(22)};
  assert.equal(validateSubscription({endpoint:'https://web.push.apple.com/device',keys}).endpoint,'https://web.push.apple.com/device');

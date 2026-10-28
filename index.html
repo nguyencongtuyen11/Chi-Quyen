@@ -69,6 +69,7 @@
         <button class="menu-item" data-view="today"><span class="mi-ic">📋</span> Hôm nay & Điểm danh</button>
         <button class="menu-item" data-view="schedule"><span class="mi-ic">📅</span> Thời khóa biểu</button>
         <button class="menu-item admin-only" data-view="students"><span class="mi-ic">🎓</span> Học sinh</button>
+        <button class="menu-item admin-only" data-view="trials"><span class="mi-ic">📞</span> Hẹn học thử</button>
         <button class="menu-item admin-only" data-view="teachers"><span class="mi-ic">👨‍🏫</span> Giáo viên</button>
         <button class="menu-item admin-only" data-view="salary"><span class="mi-ic">💰</span> Tính lương</button>
         <button class="menu-item admin-only" data-view="tuition"><span class="mi-ic">🧮</span> Học phí học sinh</button>
@@ -197,6 +198,15 @@
           <div id="studentList" class="card-list"></div>
         </section>
 
+        <!-- ============ VIEW: HẸN HỌC THỬ (admin) ============ -->
+        <section class="view" id="view-trials" hidden>
+          <div class="toolbar"><span class="search-count" id="trialCount"></span>
+            <div class="teacher-search"><input type="search" id="trialSearch" aria-label="Tìm lịch hẹn" placeholder="Tìm tên, SĐT, phụ huynh…" autocomplete="off" /></div>
+            <button class="btn primary" id="addTrialBtn">+ Thêm lịch hẹn</button>
+          </div>
+          <div id="trialList"></div>
+        </section>
+
         <!-- ============ VIEW: GIÁO VIÊN ============ -->
         <section class="view" id="view-teachers" hidden>
           <div class="toolbar">
@@ -267,6 +277,13 @@
             <div class="price-list" id="pricingBody"></div>
             <button class="btn primary" id="savePricing" style="margin-top:14px;">Lưu bảng giá</button>
             <div class="individual-pricing"><h4>Học phí riêng cho học sinh</h4><div class="individual-pricing-row"><select id="pricingStudent" aria-label="Chọn học sinh để điều chỉnh học phí"></select><button type="button" class="btn" id="adjustStudentPricing">Điều chỉnh</button></div><p>Chọn giá riêng hoặc giảm theo % cho từng khóa học.</p></div>
+          </div>
+
+          <div class="settings-card admin-only" id="trialLeadCard">
+            <h3>📞 Nhắc hẹn học thử</h3>
+            <p class="hint">Nhắc trước giờ hẹn bao nhiêu phút (thông báo trong app và thông báo đẩy về điện thoại của admin).</p>
+            <div class="row-inline"><label for="trialLeadMin">Nhắc trước (phút)</label><input id="trialLeadMin" type="number" min="0" max="1440" step="5" value="60" /></div>
+            <button class="btn primary" id="saveTrialLead" style="margin-top:12px;">Lưu</button>
           </div>
 
           <div class="settings-card admin-only" id="courseRuleCard">
@@ -423,6 +440,53 @@
       <div class="modal-foot">
         <button class="btn" id="smCancel">Hủy</button>
         <button class="btn primary" id="smSave">Lưu học sinh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: HẸN HỌC THỬ ===================== -->
+  <div id="trialModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="trTitle">Thêm lịch hẹn học thử</h3>
+        <button class="x" id="trClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="trErr" class="form-err hidden"></div>
+        <form id="trialForm">
+          <input type="hidden" id="trId" />
+          <div class="field"><label for="trName">Tên học sinh / khách hàng *</label><input id="trName" type="text" placeholder="VD: Bé Minh Khang" required /></div>
+          <div class="row-2">
+            <div class="field"><label for="trPhone">Điện thoại</label><input id="trPhone" type="tel" inputmode="tel" placeholder="09xxxxxxxx" /></div>
+            <div class="field"><label for="trGuardian">Phụ huynh</label><input id="trGuardian" type="text" placeholder="VD: Chị Thảo" /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="trDate">Ngày hẹn *</label>
+              <div class="date-wrap">
+                <input id="trDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+                <button type="button" class="cal-btn" data-cal="trDate" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="trDateNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+            <div class="field"><label for="trTime">Giờ hẹn *</label><input id="trTime" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="trSubject">Môn / Nhạc cụ</label><select id="trSubject"></select></div>
+            <div class="field"><label for="trDuration">Thời lượng (phút)</label><input id="trDuration" type="number" min="5" max="600" step="5" value="60" /></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="trTeacher">Giáo viên (nếu có)</label><select id="trTeacher"></select></div>
+            <div class="field"><label for="trRoom">Phòng</label><input id="trRoom" type="text" placeholder="VD: P.201" /></div>
+          </div>
+          <div class="field" id="trStatusField" hidden><label for="trStatus">Trạng thái</label>
+            <select id="trStatus"><option value="pending">Chờ</option><option value="attended">Đã đến</option><option value="no_show">Không đến</option><option value="cancelled">Đã hủy</option><option value="converted">Đã đăng ký học</option></select>
+          </div>
+          <div class="field"><label for="trNote">Ghi chú</label><textarea id="trNote" rows="2" placeholder="VD: muốn học buổi tối, kiểm tra trình độ…"></textarea></div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="trCancel">Hủy</button>
+        <button class="btn primary" id="trSave">Lưu lịch hẹn</button>
       </div>
     </div>
   </div>

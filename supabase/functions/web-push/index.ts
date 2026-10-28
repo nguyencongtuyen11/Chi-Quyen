@@ -1,6 +1,6 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.118.0';
 import webpush from 'npm:web-push@3.6.7';
-import {reminderFor,validateSubscription} from '../_shared/push-core.mjs';
+import {reminderFor,trialReminderFor,validateSubscription} from '../_shared/push-core.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-cron-secret','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const reply = (body:unknown,status=200) => Response.json(body,{status,headers});
 function required(name:string){const value=Deno.env.get(name);if(!value)throw new Error('Thiếu cấu hình máy chủ: '+name);return value;}
@@ -43,6 +43,30 @@ Deno.serve(async req=>{
      }
     }));
    }
+   // Nhắc hẹn học thử (admin) — bảng tạo ở migration 7; chưa có bảng thì bỏ qua, không ảnh hưởng nhắc giờ học.
+   try{
+    const leadRow=checked(await db.from('app_settings').select('value').eq('key','trial_lead_minutes').maybeSingle());
+    const trialLead=Number(leadRow?.value ?? 60);
+    const windowFrom=new Date(now.getTime()-5*60000).toISOString(), windowTo=new Date(now.getTime()+1441*60000).toISOString();
+    const trials=checked(await db.from('trial_bookings').select('id,full_name,phone,subject,start_at,status').eq('status','pending').gte('start_at',windowFrom).lte('start_at',windowTo).limit(500));
+    const trialJobs=[];
+    for(const trial of trials){for(const sub of subs){
+     const payload=trialReminderFor(trial,sub,profiles.find(p=>p.id===sub.user_id)?.role,trialLead,now);
+     if(payload)trialJobs.push({trial,sub,payload});
+    }}
+    for(const {trial,sub,payload} of trialJobs.slice(0,20)){
+     if(!checked(await db.rpc('claim_push_trial_delivery',{p_sub:sub.id,p_trial:trial.id,p_start:payload.start_at})))continue;
+     try{
+      await webpush.sendNotification({endpoint:sub.endpoint,keys:sub.keys},JSON.stringify(payload),{TTL:300,timeout:8000,urgency:'high'});
+      checked(await db.from('push_trial_deliveries').update({status:'sent',sent_at:new Date().toISOString()}).eq('subscription_id',sub.id).eq('trial_id',trial.id).eq('start_at',payload.start_at));sent++;
+     }catch(error:any){
+      failed++;
+      if([404,410].includes(error.statusCode))checked(await db.from('push_subscriptions').delete().eq('id',sub.id));
+      else checked(await db.from('push_trial_deliveries').update({status:'failed'}).eq('subscription_id',sub.id).eq('trial_id',trial.id).eq('start_at',payload.start_at));
+      console.error('Trial push failed',{status:error.statusCode || 0});
+     }
+    }
+   }catch(error:any){ if(!/trial_bookings|trial_lead|claim_push_trial/.test(error?.message||''))console.error('Trial reminders skipped:',error?.message); }
    return reply({sent,failed});
   }
   const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');

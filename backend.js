@@ -135,11 +135,23 @@
       },
       listAttendanceByStudent(studentId) { return readPages(() => sb.from("attendance").select("*").eq("student_id", studentId).order("id")); },
       async listSchedulesByIds(ids) { if (!ids || !ids.length) return { data: [], error: null }; return readIds("schedules", "id", ids); },
-      setAttendance(scheduleId, studentId, present, byUserId) {
+      // extra: cột bổ sung (vd { late:false, late_minutes:null } khi chuyển từ Muộn -> Có mặt/Vắng)
+      setAttendance(scheduleId, studentId, present, byUserId, extra) {
         return sb.from("attendance").upsert(
-          { schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId },
+          Object.assign({ schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId }, extra || {}),
           { onConflict: "schedule_id,student_id" }
         );
+      },
+      // Đi muộn: vẫn có mặt (present=true) + late + số phút muộn — cần migration 7
+      setAttendanceLate(scheduleId, studentId, late, lateMinutes, byUserId) {
+        return sb.from("attendance").upsert(
+          { schedule_id: scheduleId, student_id: studentId, present: late ? true : null, late: !!late, late_minutes: late ? lateMinutes : null, marked_at: nowISO(), marked_by: byUserId },
+          { onConflict: "schedule_id,student_id" }
+        );
+      },
+      setAttendanceLateMinutes(scheduleId, studentId, lateMinutes, byUserId) {
+        return sb.from("attendance").update({ late_minutes: lateMinutes, marked_at: nowISO(), marked_by: byUserId })
+          .eq("schedule_id", scheduleId).eq("student_id", studentId);
       },
       // Lưu ghi chú lý do nghỉ cho 1 học sinh trong 1 buổi (giữ nguyên present hiện có)
       setAttendanceNote(scheduleId, studentId, note, byUserId) {
@@ -161,20 +173,36 @@
       // Toàn bộ điểm danh kèm ngày/giờ học (để chia buổi vào từng khóa).
       // Supabase trả tối đa 1000 dòng/lần -> lấy theo trang.
       async listAttendanceWithDates() {
-        let cols = "id, schedule_id, student_id, present, excused, note, schedules(schedule_date, start_time)";
-        let r = await readPages(() => sb.from("attendance").select(cols).order("id"), 4);
-        if (r.error && /excused/.test(r.error.message || "")) {   // chưa chạy migration 6 -> bỏ cột excused
-          cols = cols.replace(" excused,", "");
-          r = await readPages(() => sb.from("attendance").select(cols).order("id"), 4);
+        // cột mới (excused: migration 6; late, late_minutes: migration 7) — chưa chạy migration thì bỏ dần cột thiếu
+        let opt = ["excused", "late", "late_minutes"];
+        const cols = () => ["id", "schedule_id", "student_id", "present", ...opt, "note", "schedules(schedule_date, start_time)"].join(", ");
+        let r = await readPages(() => sb.from("attendance").select(cols()).order("id"), 4);
+        while (r.error && opt.some((c) => (r.error.message || "").includes(c))) {
+          opt = opt.filter((c) => !(r.error.message || "").includes(c));
+          r = await readPages(() => sb.from("attendance").select(cols()).order("id"), 4);
         }
         if (r.error) return { data: null, error: r.error };
         const out = [];
         r.data.forEach((row) => {
           const s = row.schedules || {};
-          if (s.schedule_date) out.push({ schedule_id: row.schedule_id, student_id: row.student_id, present: row.present, excused: !!row.excused, note: row.note, schedule_date: s.schedule_date, start_time: s.start_time });
+          if (s.schedule_date) out.push({ schedule_id: row.schedule_id, student_id: row.student_id, present: row.present, excused: !!row.excused, late: !!row.late, late_minutes: row.late_minutes ?? null, note: row.note, schedule_date: s.schedule_date, start_time: s.start_time });
         });
         return { data: out, error: null };
       },
+
+      // ---- HẸN HỌC THỬ (admin) — cần migration 7 ----
+      async listTrials({ from, to } = {}) {
+        const r = await readPages(() => {
+          let q = sb.from("trial_bookings").select("*").order("start_at").order("id");
+          if (from) q = q.gte("start_at", from);
+          if (to) q = q.lt("start_at", to);
+          return q;
+        });
+        return r.error ? { data: [], error: r.error } : r;   // chưa có bảng -> danh sách rỗng
+      },
+      addTrial(o) { return sb.from("trial_bookings").insert(o).select("*").single(); },
+      updateTrial(id, o) { return sb.from("trial_bookings").update(Object.assign({ updated_at: nowISO() }, o)).eq("id", id); },
+      deleteTrial(id) { return sb.from("trial_bookings").delete().eq("id", id); },
 
       // ---- COURSES (khóa học) — cần migration 6 ----
       async listCourses() {
@@ -278,13 +306,20 @@
       const settings = {
         default_pay: { ca_nhan: 150000, doi: 120000, nhom: 90000, gia_su: 200000 },
         default_tuition: { ca_nhan: 200000, doi: 160000, nhom: 120000, gia_su: 250000 },
+        trial_lead_minutes: 60,
       };
+      // Hẹn học thử mẫu: 1 lịch chiều nay, 1 lịch 16:00 ngày mai
+      const at = (days, hh, mm) => { const x = addDays(today, days); x.setHours(hh, mm, 0, 0); return x.toISOString(); };
+      const trials = [
+        { id: uid(), full_name: "Bé Minh Khang", guardian: "Chị Thảo", phone: "0912345678", subject: "Piano", teacher_id: "t-lan", start_at: at(0, 17, 30), duration_minutes: 45, room: "P.201", note: "Muốn học buổi tối", status: "pending", created_at: nowISO(), updated_at: nowISO() },
+        { id: uid(), full_name: "Ngọc Hân", guardian: "Anh Tuấn", phone: "0987654321", subject: "Guitar", teacher_id: null, start_at: at(1, 16, 0), duration_minutes: 60, room: "", note: "Kiểm tra trình độ", status: "pending", created_at: nowISO(), updated_at: nowISO() },
+      ];
       const payments = [
         { id: uid(), student_id: "s1", paid_at: new Date(addDays(today, -18)).toISOString(), amount: 2400000, sessions: 12, note: "Đóng đủ khóa", created_by: "u-admin", created_at: nowISO() },
         { id: uid(), student_id: "s2", paid_at: new Date(addDays(today, -25)).toISOString(), amount: 1920000, sessions: 12, note: "Đợt 1", created_by: "u-admin", created_at: nowISO() },
         { id: uid(), student_id: "s3", paid_at: new Date(addDays(today, -8)).toISOString(),  amount: 2040000, sessions: 12, note: "", created_by: "u-admin", created_at: nowISO() },
       ];
-      return { users, profiles, teachers, students, schedules, attendance, settings, payments };
+      return { users, profiles, teachers, students, schedules, attendance, settings, payments, trials };
     }
 
     function load() {
@@ -414,12 +449,28 @@
       },
       async listAttendanceByStudent(studentId) { return ok(store.attendance.filter((a) => a.student_id === studentId).map((a) => Object.assign({}, a))); },
       async listSchedulesByIds(ids) { ids = ids || []; return ok(store.schedules.filter((s) => ids.includes(s.id)).map((s) => Object.assign({}, s))); },
-      async setAttendance(scheduleId, studentId, present, byUserId) {
+      async setAttendance(scheduleId, studentId, present, byUserId, extra) {
         let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
         if (a) { a.present = present; a.marked_at = nowISO(); a.marked_by = byUserId; }
         else { a = { id: uid(), schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId }; store.attendance.push(a); }
+        Object.assign(a, extra || {});
         save(store); return ok(a);
       },
+      async setAttendanceLate(scheduleId, studentId, late, lateMinutes, byUserId) {
+        return this.setAttendance(scheduleId, studentId, late ? true : null, byUserId, { late: !!late, late_minutes: late ? lateMinutes : null });
+      },
+      async setAttendanceLateMinutes(scheduleId, studentId, lateMinutes, byUserId) {
+        const a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
+        if (a) { a.late_minutes = lateMinutes; a.marked_at = nowISO(); a.marked_by = byUserId; save(store); }
+        return ok(true);
+      },
+      async listTrials({ from, to } = {}) {
+        return ok((store.trials || []).filter((t) => (!from || t.start_at >= from) && (!to || t.start_at < to))
+          .slice().sort((a, b) => String(a.start_at).localeCompare(String(b.start_at))));
+      },
+      async addTrial(o) { store.trials = store.trials || []; const r = Object.assign({ id: uid(), status: "pending", duration_minutes: 60, created_at: nowISO(), updated_at: nowISO() }, o); store.trials.push(r); save(store); return ok(r); },
+      async updateTrial(id, o) { const t = (store.trials || []).find((x) => x.id === id); if (t) Object.assign(t, o, { updated_at: nowISO() }); save(store); return ok(true); },
+      async deleteTrial(id) { store.trials = (store.trials || []).filter((x) => x.id !== id); save(store); return ok(true); },
       async setAttendanceNote(scheduleId, studentId, note, byUserId) {
         let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
         if (a) { a.note = note; a.marked_at = nowISO(); a.marked_by = byUserId; }
@@ -436,7 +487,7 @@
         const byId = {}; store.schedules.forEach((s) => (byId[s.id] = s));
         return ok(store.attendance.filter((a) => byId[a.schedule_id]).map((a) => {
           const s = byId[a.schedule_id];
-          return { schedule_id: a.schedule_id, student_id: a.student_id, present: a.present, excused: !!a.excused, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time };
+          return { schedule_id: a.schedule_id, student_id: a.student_id, present: a.present, excused: !!a.excused, late: !!a.late, late_minutes: a.late_minutes ?? null, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time };
         }));
       },
       async listCourses() { return ok((store.courses || []).slice().sort((a, b) => a.seq - b.seq)); },

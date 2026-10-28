@@ -1092,3 +1092,30 @@ body { isolation: isolate; }
 .dialog-top h2 { margin-right: auto !important; }
 .dialog-top .notify-clear { width: auto !important; height: 36px !important; padding: 0 14px; border-radius: 999px !important; border: 1px solid var(--border) !important;
   background: color-mix(in srgb, var(--card-solid) 80%, transparent) !important; color: var(--bad) !important; font: inherit; font-size: 13.5px !important; font-weight: 650; cursor: pointer; }
+
+/* ===== ĐI MUỘN ===== */
+.att-btn.late { font-size: 14px; }
+.att-btn.late.on { background: var(--warn); color: #2a1500; border-color: transparent; }
+.att-status.late { background: var(--sang-bg); color: var(--sang-fg); }
+.att-late-row { padding: 0 8px 9px; font-size: 13px; color: var(--muted); }
+.att-late-row label { display: inline-flex; align-items: center; gap: 8px; }
+.att-late-input { width: 74px; padding: 7px 10px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--card-solid) 75%, transparent); color: var(--text); font: inherit; font-size: 16px; text-align: center; }
+
+/* ===== HẸN HỌC THỬ ===== */
+.trial-pill { font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.trial-pill.pending { background: var(--sang-bg); color: var(--sang-fg); }
+.trial-pill.attended, .trial-pill.converted { background: var(--toi-bg); color: var(--toi-fg); }
+.trial-pill.no_show { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.trial-pill.cancelled { background: var(--bg-soft); color: var(--muted-2); }
+.trial-card.cancelled, .trial-card.no_show { opacity: .75; }
+.trial-card .tel { color: var(--primary); font-weight: 650; text-decoration: none; }
+#trialList .block-title { margin: 18px 2px 10px; }
+#trialList .block-title:first-child { margin-top: 0; }
+/* thẻ gọn ở Hôm nay / Thời khóa biểu: viền vàng + nhãn "HẸN HỌC THỬ" để không lẫn với buổi học */
+.mini.trial-mini { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--sang-bg) 60%, var(--card-solid)); cursor: pointer; }
+.mini.trial-mini.attended, .mini.trial-mini.converted { border-left-color: var(--good); }
+.mini.trial-mini.no_show { opacity: .7; }
+.trial-tag { font-size: 10px; font-weight: 800; letter-spacing: .8px; color: var(--sang-fg); background: var(--sang-bg); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.mini.trial-mini .mini-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.today-trials { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.today-trials .block-title { margin: 0 2px 2px; }

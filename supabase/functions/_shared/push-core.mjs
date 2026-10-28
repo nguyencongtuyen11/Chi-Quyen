@@ -18,3 +18,16 @@ export function reminderFor(schedule, subscription, teacher, role, now = new Dat
   if (!Number.isFinite(due) || now.getTime() < due || now.getTime() - due >= 300000 || (lead > 0 && now >= start)) return null;
   return {start_at:start.toISOString(), title:'OPENMUSIC — Sắp đến giờ lớp', body:`${schedule.start_time.slice(0,5)} — ${schedule.subject}${schedule.room ? ' — '+schedule.room : ''}`, tag:`lesson-${schedule.id}-${start.toISOString()}`, url:'/?view=today'};
 }
+// Nhắc hẹn học thử: chỉ gửi cho ADMIN, chỉ lịch hẹn còn "Chờ", trước giờ hẹn leadMinutes phút (Cài đặt).
+export function trialReminderFor(trial, subscription, role, leadMinutes, now = new Date()) {
+  if (role !== 'admin' || trial?.status !== 'pending') return null;
+  const lead = Number(leadMinutes);
+  if (!Number.isInteger(lead) || lead < 0 || lead > 1440) return null;
+  const start = new Date(trial.start_at);
+  const due = start.getTime() - lead * 60000;
+  // Giống nhắc giờ học: chấp nhận cron trễ < 5 phút, không bao giờ nhắc sau giờ hẹn.
+  if (!Number.isFinite(due) || now.getTime() < due || now.getTime() - due >= 300000 || (lead > 0 && now >= start)) return null;
+  const hm = new Date(start.getTime() + 7 * 3600000).toISOString().slice(11, 16);   // giờ Việt Nam
+  const extra = [trial.phone, trial.subject].filter(Boolean).join(' — ');
+  return {start_at:start.toISOString(), title:'OPENMUSIC — Sắp đến giờ hẹn học thử', body:`${hm} — ${trial.full_name}${extra ? ' — ' + extra : ''}`, tag:`trial-${trial.id}-${start.toISOString()}`, url:'/?view=trials'};
+}

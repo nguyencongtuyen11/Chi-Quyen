@@ -49,8 +49,8 @@
   const DOW_SHORT = { 0: "CN", 1: "Th 2", 2: "Th 3", 3: "Th 4", 4: "Th 5", 5: "Th 6", 6: "Th 7" };
   const DOW_TINY = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
   // tiêu đề lớn (hero) — ngắn gọn kiểu iOS
-  const HERO_TITLE = { today: "Hôm nay", schedule: "Lịch học", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí", profit: "Lãi / Lỗ", notify: "Thông báo", settings: "Cài đặt" };
-  const PAGE_TITLE = { today: "Hôm nay & Điểm danh", schedule: "Thời khóa biểu", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí học sinh", profit: "Lãi/Lỗ trung tâm", notify: "Thông báo", settings: "Cài đặt" };
+  const HERO_TITLE = { today: "Hôm nay", schedule: "Lịch học", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí", profit: "Lãi / Lỗ", trials: "Hẹn học thử", notify: "Thông báo", settings: "Cài đặt" };
+  const PAGE_TITLE = { today: "Hôm nay & Điểm danh", schedule: "Thời khóa biểu", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí học sinh", profit: "Lãi/Lỗ trung tâm", trials: "Hẹn học thử", notify: "Thông báo", settings: "Cài đặt" };
 
   // Môn học & loại lớp (cá nhân / đôi / nhóm)
   const SUBJECTS = ["Piano", "Guitar", "Thanh nhạc", "Múa", "Vẽ", "Cờ vua"];
@@ -75,16 +75,19 @@
   //  Mỗi HS học nhiều khóa (12 / 24 buổi / tùy chỉnh). Buổi được xếp vào khóa theo thứ tự thời gian:
   //  khóa đủ số buổi -> sang khóa sau (đánh số lại từ 1); chưa có khóa sau -> "buổi lẻ".
   //  Buổi nào được TRỪ vào khóa do cô chọn (mặc định ở Cài đặt, chỉnh riêng từng khóa):
+  //  "Muộn" = vẫn có mặt (present=true) nhưng late=true -> chỉ quy tắc "Chỉ buổi có mặt" là KHÔNG trừ buổi muộn.
   const COUNT_RULES = [
-    { key: "present",           label: "Chỉ buổi có mặt" },
-    { key: "present_unexcused", label: "Có mặt + vắng không phép" },
+    { key: "present",           label: "Chỉ buổi có mặt (đúng giờ)" },
+    { key: "present_late",      label: "Có mặt + muộn" },
+    { key: "present_unexcused", label: "Có mặt + muộn + vắng không phép" },
     { key: "all",               label: "Mọi buổi đã điểm danh (kể cả vắng)" },
   ];
-  function defaultCountRule() { const r = settings.course_count_rule; return COUNT_RULES.some((x) => x.key === r) ? r : "present"; }
+  // chưa chọn ở Cài đặt -> "Có mặt + muộn" (đi muộn vẫn tính buổi & học phí)
+  function defaultCountRule() { const r = settings.course_count_rule; return COUNT_RULES.some((x) => x.key === r) ? r : "present_late"; }
   function countRuleLabel(k) { const r = COUNT_RULES.find((x) => x.key === k); return r ? r.label : ""; }
   function ruleOf(c) { return (c && c.count_rule) || defaultCountRule(); }
   function sessionCounts(a, rule) {
-    if (a.present === true) return true;
+    if (a.present === true) return !(a.late && rule === "present");
     if (a.present !== false) return false;               // chưa điểm danh
     return rule === "all" || (rule === "present_unexcused" && !a.excused);
   }
@@ -449,6 +452,12 @@
     applyRoleUI();
     initSettingsUI();
     switchView(fromSnapshot ? currentView : "today");   // vẽ lại trang đang xem bằng dữ liệu mới
+    // mở từ thông báo đẩy (vd "/?view=trials") -> vào thẳng trang đó
+    const wanted = new URLSearchParams(location.search).get("view");
+    if (wanted && PAGE_TITLE[wanted] && (wanted !== "trials" || isAdmin())) {
+      switchView(wanted);
+      try { history.replaceState(null, "", location.pathname); } catch (_) {}
+    }
     hideSplash();
     startReminderLoop();
     refreshDevicePush();
@@ -573,6 +582,10 @@
       return pendingProfile ? pendingProfile.then(go) : go();
     };
     // Start all independent reads together; attendance supplies present counts too.
+    // lịch hẹn học thử (admin): chưa chạy migration 7 -> coi như chưa có lịch hẹn, không chặn app
+    const trialsP = B.listTrials
+      ? adminOnly('Hẹn học thử', () => B.listTrials().then((r) => ({ data: r.data || [] })), () => ({ data: [] }))
+      : { data: [] };
     const [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes] = await Promise.all([
       traceDataLoad('Giáo viên', () => B.listTeachers()),
       traceDataLoad('Học sinh', () => B.listStudents()),
@@ -587,8 +600,10 @@
     const failed = [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes].find(result => result.error);
     if (failed) throw failed.error;
     if (currentUid !== loadUid) return;
+    const trRes = await trialsP;
+    if (currentUid !== loadUid) return;
     applyGlobals({ teachers: tRes.data, students: sRes.data, profiles: pRes.data, settings: setRes.data, teacherStats: tsRes.data,
-      courses: coRes.data, payments: payRes.data, att: attRes.data });
+      courses: coRes.data, payments: payRes.data, att: attRes.data, trials: trRes.data });
     saveSnapshot();
   }
   // Đổ dữ liệu chung vào app — dùng chung cho dữ liệu mới từ Supabase và bản lưu trên máy (mở app tức thì)
@@ -610,6 +625,7 @@
 
     allPayments = []; paidByStudent = {};
     attRowsByStudent = {}; courseInfo = {};
+    trials = isAdmin() ? (raw.trials || []) : [];
     // điểm danh kèm ngày -> chia buổi vào khóa (giáo viên chỉ đọc được lớp mình dạy -> tính trên các buổi đó)
     if (isAdmin()) {
       allPayments = raw.payments || [];
@@ -658,7 +674,7 @@
       idb.set("snap:" + uid, {
         v: SNAP_VERSION, at: Date.now(), profile: myProfile,
         raw: { teachers, students, profiles: profilesList, settings, teacherStats: teacherStatsById,
-          courses: Object.values(coursesByStudent).flat(), payments: allPayments, att: Object.values(attRowsByStudent).flat() },
+          courses: Object.values(coursesByStudent).flat(), payments: allPayments, att: Object.values(attRowsByStudent).flat(), trials },
         today: [...todayCache], week: [...weekCache],
       });
     }, 800);
@@ -721,7 +737,7 @@
     $("heroTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
     $("topViewTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
     $("studentCount").hidden = view !== "students";
-    $("pageSearchBtn").hidden = !['students', 'teachers', 'tuition'].includes(view);
+    $("pageSearchBtn").hidden = !['students', 'teachers', 'tuition', 'trials'].includes(view);
     closeSidebar();
     if (view === "today") loadToday();
     else if (view === "schedule") { fillTeacherFilter(); setViewDate(viewDate); }
@@ -730,6 +746,7 @@
     else if (view === "salary") { ensureSalaryDates(); }
     else if (view === "tuition") renderTuition();
     else if (view === "profit") { ensureProfitDates(); }
+    else if (view === "trials") renderTrials();
     else if (view === "notify") renderNotify();
     else if (view === "settings") renderSettings();
   }
@@ -852,20 +869,23 @@
 
   function renderToday() {
     // thống kê
-    let present = 0, absent = 0, none = 0;
-    todayAtt.forEach((a) => { if (a.present === true) present++; else if (a.present === false) absent++; else none++; });
-    $("todayStats").innerHTML = [[todayScheds.length,"lớp","primary"],[present,"có mặt","good"],[absent,"vắng","bad"],[none,"chưa ĐD","warn"]]
+    let present = 0, absent = 0, none = 0, late = 0;
+    todayAtt.forEach((a) => { if (a.present === true) { present++; if (a.late) late++; } else if (a.present === false) absent++; else none++; });
+    $("todayStats").innerHTML = [[todayScheds.length,"lớp","primary"],[present,late ? `có mặt (${late} muộn)` : "có mặt","good"],[absent,"vắng","bad"],[none,"chưa ĐD","warn"]]
       .map(([n,label,cls]) => `<span class="today-stat ${cls}" aria-label="${n} ${label}"><b>${n}</b><span>${label}</span></span>`).join("");
     const isToday = ymd(attDate) === ymd(startOfToday());
     $("todayDate").textContent = "";
 
+    // lịch hẹn học thử trong ngày (admin) — hiện trên cùng
+    const dayTrials = trialsOn(ymd(attDate)).sort((a, b) => a.start_at.localeCompare(b.start_at));
+    const trialsHtml = dayTrials.length ? `<div class="today-trials"><h3 class="block-title">Hẹn học thử · ${dayTrials.length}</h3>${dayTrials.map((t) => trialMini(t, false)).join("")}</div>` : "";
     if (!todayScheds.length) {
-      $("todayList").innerHTML = `<div class="empty"><div class="big">🎵</div>${isToday ? "Hôm nay" : "Ngày này"} không có lớp nào.</div>`;
+      $("todayList").innerHTML = trialsHtml + `<div class="empty"><div class="big">🎵</div>${isToday ? "Hôm nay" : "Ngày này"} không có lớp nào.</div>`;
       return;
     }
     const now = new Date();
     const locked = !canEditAttendance();
-    $("todayList").innerHTML = todayScheds.map((s) => classCard(s, now, locked)).join("");
+    $("todayList").innerHTML = trialsHtml + todayScheds.map((s) => classCard(s, now, locked)).join("");
   }
   function chip(n, l, cls) { return `<div class="stat-chip ${cls || ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
 
@@ -901,9 +921,15 @@
             else if (ex) courseTag = ' · <b class="extra-txt">Buổi lẻ — hết khóa</b>';
           }
           const sub = st ? esc(st.subject || "") + courseTag : "";
-          const status = a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
+          const late = a.present === true && a.late;
+          const status = late ? `<span class="att-status late">⏱ Muộn${a.late_minutes ? " " + a.late_minutes + " phút" : ""}</span>`
+            : a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
             : a.present === false ? '<span class="att-status absent">✕ Vắng</span>'
             : '<span class="att-status none">• Chưa điểm danh</span>';
+          // đi muộn -> ô nhập số phút muộn (lưu khi rời ô)
+          const lateRow = late
+            ? `<div class="att-late-row"><label>Muộn <input class="att-late-input" type="number" inputmode="numeric" min="0" max="600" step="1" data-latemin="${s.id}|${a.student_id}" value="${a.late_minutes ?? ""}" placeholder="?"> phút</label></div>`
+            : "";
           // HS vắng -> hiện ô ghi lý do nghỉ (lưu lại để truy xuất trong PDF của HS)
           // khóa tính "có mặt + vắng không phép" -> cho đánh dấu vắng CÓ PHÉP (không trừ buổi)
           const excRow = studentRule(a.student_id) === "present_unexcused"
@@ -914,10 +940,11 @@
           return `<div class="att-item"><div class="att-row">` +
             `<div class="att-name"><div class="att-name-top"><span class="n">${esc(nm)}</span>${status}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
             `<div class="att-actions">` +
-            `<button class="att-btn yes ${a.present === true ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt">✓</button>` +
+            `<button class="att-btn yes ${a.present === true && !late ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt (đúng giờ)">✓</button>` +
+            `<button class="att-btn late ${late ? "on" : ""}" data-attlate="${s.id}|${a.student_id}" title="Đi muộn">⏱</button>` +
             `<button class="att-btn no ${a.present === false ? "on" : ""}" data-att="${s.id}|${a.student_id}|0" title="Vắng">✕</button>` +
             `<button class="att-btn rm" data-attrm="${s.id}|${a.student_id}" title="Bỏ khỏi lớp">🗑</button>` +
-            `</div></div>` + noteRow + `</div>`;
+            `</div></div>` + lateRow + noteRow + `</div>`;
         }).join("")
       : '<div class="class-empty-students">Chưa có học sinh trong lớp này.</div>';
 
@@ -982,14 +1009,44 @@
   async function markStudent(scheduleId, studentId, present) {
     if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
-    // bấm lại nút đang bật -> bỏ chọn (về "chưa điểm danh")
-    const newVal = (cur && cur.present === present) ? null : present;
-    const { error } = await B.setAttendance(scheduleId, studentId, newVal, user.id);
+    const wasLate = !!(cur && cur.late);
+    // bấm lại nút đang bật -> bỏ chọn (về "chưa điểm danh"); đang "Muộn" mà bấm ✓ -> thành có mặt đúng giờ
+    const newVal = (cur && cur.present === present && !wasLate) ? null : present;
+    // chỉ gửi cột late khi cần bỏ dấu muộn (DB chưa chạy migration 7 vẫn điểm danh bình thường)
+    const extra = wasLate ? { late: false, late_minutes: null } : undefined;
+    const { error } = await B.setAttendance(scheduleId, studentId, newVal, user.id, extra);
     if (error) return toast("Lỗi điểm danh: " + error.message, "err");
-    if (cur) cur.present = newVal;
-    else todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: newVal });
-    patchAttCache(scheduleId, studentId, { present: newVal });
+    const patch = Object.assign({ present: newVal }, extra || {});
+    if (cur) Object.assign(cur, patch);
+    else todayAtt.push(Object.assign({ schedule_id: scheduleId, student_id: studentId }, patch));
+    patchAttCache(scheduleId, studentId, patch);
     renderToday();
+  }
+  // ⏱ Đi muộn: bật -> có mặt + muộn (rồi nhập số phút); bấm lại -> về chưa điểm danh
+  async function markLate(scheduleId, studentId) {
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
+    const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
+    const late = !(cur && cur.present === true && cur.late);
+    const { error } = await B.setAttendanceLate(scheduleId, studentId, late, null, user.id);
+    if (error) return toast("Lỗi điểm danh: " + error.message + (/late/.test(error.message) ? " — cần chạy supabase-migration-7.sql" : ""), "err");
+    const patch = { present: late ? true : null, late, late_minutes: null };
+    if (cur) Object.assign(cur, patch);
+    else todayAtt.push(Object.assign({ schedule_id: scheduleId, student_id: studentId }, patch));
+    patchAttCache(scheduleId, studentId, patch);
+    renderToday();
+    if (late) { const inp = document.querySelector(`[data-latemin="${scheduleId}|${studentId}"]`); if (inp) inp.focus(); }
+  }
+  async function saveLateMinutes(scheduleId, studentId, raw) {
+    if (!canEditAttendance()) return;
+    const n = String(raw).trim() === "" ? null : Math.max(0, Math.min(600, parseInt(raw, 10) || 0));
+    const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
+    if (cur && (cur.late_minutes ?? null) === n) return;
+    const { error } = await B.setAttendanceLateMinutes(scheduleId, studentId, n, user.id);
+    if (error) return toast("Lỗi lưu số phút muộn: " + error.message, "err");
+    if (cur) cur.late_minutes = n;
+    patchAttCache(scheduleId, studentId, { late_minutes: n });
+    renderToday();
+    if (n != null) toast(`Đã ghi muộn ${n} phút.`, "ok");
   }
   // Lưu ghi chú lý do nghỉ của HS (gọi khi rời ô nhập). Không re-render để không mất con trỏ.
   async function saveAttNote(scheduleId, studentId, note) {
@@ -1103,7 +1160,7 @@
     const ws = startOfWeek(viewDate), selected = ymd(viewDate), today = ymd(startOfToday());
     $("scheduleDays").innerHTML = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(ws, i), date = ymd(d), active = date === selected;
-      const hasLessons = allForWeek.some((s) => s.schedule_date === date);
+      const hasLessons = allForWeek.some((s) => s.schedule_date === date) || trialsOn(date).length > 0;
       return `<button type="button" class="schedule-day${active ? " active" : ""}${date === today ? " is-today" : ""}" data-schedule-date="${date}" aria-pressed="${active}" aria-label="Xem lịch ${DOW[d.getDay()]}, ${dmy(d)}">` +
         `<span class="schedule-weekday">${["T2", "T3", "T4", "T5", "T6", "T7", "CN"][i]}</span><strong>${d.getDate()}</strong>` +
         `<span class="schedule-day-dot${hasLessons ? "" : " none"}" aria-hidden="true"></span></button>`;
@@ -1117,6 +1174,12 @@
     const todayY = ymd(startOfToday());
     const map = {}; days.forEach((d) => (map[ymd(d)] = { sang: [], chieu: [], toi: [] }));
     allForWeek.forEach((s) => { const m = map[s.schedule_date]; if (m) m[buoiOf(s.start_time)].push(s); });
+    // lịch hẹn học thử (admin) xếp chung theo buổi, ghi rõ "HẸN HỌC THỬ"
+    days.forEach((d) => trialsOn(ymd(d)).forEach((t) => {
+      const st = trialHHMM(t);
+      map[ymd(d)][buoiOf(st)].push({ __trial: t, start_time: st });
+    }));
+    Object.values(map).forEach((m) => Object.values(m).forEach((l) => l.sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))));
     renderWeekGrid(days, map, todayY);
     renderWeekList(days, map, todayY);
   }
@@ -1130,6 +1193,7 @@
   }
 
   function miniCard(s, compact) {
+    if (s.__trial) return trialMini(s.__trial, compact);
     const name = teacherDisplay(s);
     const admin = isAdmin();
     const act = admin
@@ -1457,20 +1521,20 @@
   }
 
   function renderPageSearch() {
-    const teacherMode = currentView === 'teachers';
-    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : 'studentSearch';
+    const teacherMode = currentView === 'teachers', trialMode = currentView === 'trials';
+    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : trialMode ? 'trialSearch' : 'studentSearch';
     const query = norm($("pageSearchInput").value);
     $(sourceId).value = $("pageSearchInput").value;
-    if (teacherMode) renderTeachers(); else if (currentView === 'tuition') renderTuition(); else renderStudents();
-    const records = teacherMode ? teachers : students;
+    if (teacherMode) renderTeachers(); else if (currentView === 'tuition') renderTuition(); else if (trialMode) renderTrials(); else renderStudents();
+    const records = teacherMode ? teachers : trialMode ? trials : students;
     const matches = records.filter(r => norm([r.full_name,r.phone,r.guardian,r.subject,r.specialty,(teachersById[r.teacher_id] || {}).full_name,(profilesById[r.user_id] || {}).email].filter(Boolean).join(' ')).includes(query));
     $("pageSearchResults").innerHTML = matches.length ? matches.slice(0,12).map(r => `<button type="button" data-search-name="${esc(r.full_name)}"><strong>${esc(r.full_name)}</strong><span>${esc(r.specialty || r.subject || '')}</span></button>`).join('') : '<p>Không có kết quả phù hợp.</p>';
     $("pageSearchDone").textContent = `Xem ${matches.length} kết quả`;
   }
   function openPageSearch() {
-    const teacherMode = currentView === 'teachers';
-    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : 'studentSearch';
-    $("pageSearchTitle").textContent = teacherMode ? 'Tìm giáo viên' : currentView === 'tuition' ? 'Tìm học phí' : 'Tìm học sinh';
+    const teacherMode = currentView === 'teachers', trialMode = currentView === 'trials';
+    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : trialMode ? 'trialSearch' : 'studentSearch';
+    $("pageSearchTitle").textContent = teacherMode ? 'Tìm giáo viên' : currentView === 'tuition' ? 'Tìm học phí' : trialMode ? 'Tìm lịch hẹn' : 'Tìm học sinh';
     $("pageSearchInput").placeholder = teacherMode ? 'Tìm tên, chuyên môn, email…' : 'Tìm tên, số điện thoại, phụ huynh…';
     $("pageSearchInput").value = $(sourceId).value;
     renderPageSearch(); $("pageSearchDialog").showModal(); $("pageSearchInput").focus();
@@ -1782,6 +1846,193 @@
   }
 
   // =====================================================================
+  //  HẸN HỌC THỬ (admin) — khách mới hẹn học thử / kiểm tra trình độ
+  //  Hiện ở: mục "Hẹn học thử" (trong Quản lý), Thời khóa biểu tuần (ghi rõ "Hẹn học thử"),
+  //  trang Hôm nay, chuông Thông báo; nhắc trước X phút (Cài đặt, mặc định 60).
+  // =====================================================================
+  let trials = [];
+  const TRIAL_STATUS = { pending: "Chờ", attended: "Đã đến", no_show: "Không đến", cancelled: "Đã hủy", converted: "Đã đăng ký học" };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  function trialLeadMin() { const v = Number(settings.trial_lead_minutes); return Number.isFinite(v) && v >= 0 ? v : 60; }
+  function trialStart(t) { return new Date(t.start_at); }
+  function trialYmd(t) { return ymd(trialStart(t)); }
+  function trialHHMM(t) { const d = trialStart(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function trialEndHHMM(t) { const d = new Date(trialStart(t).getTime() + (Number(t.duration_minutes) || 60) * 60000); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function trialsOn(dateY) { return isAdmin() ? trials.filter((t) => trialYmd(t) === dateY && t.status !== "cancelled") : []; }
+  function trialTeacher(t) { return (t.teacher_id && teachersById[t.teacher_id] && teachersById[t.teacher_id].full_name) || ""; }
+  function trialPill(t) { return `<span class="trial-pill ${t.status}">${TRIAL_STATUS[t.status] || t.status}</span>`; }
+  function telLink(p) { return p ? `<a class="tel" href="tel:${esc(String(p).replace(/[^\d+]/g, ""))}">${esc(p)}</a>` : "—"; }
+
+  // thẻ đầy đủ (mục Hẹn học thử) — cùng kiểu thẻ Học sinh/Giáo viên
+  function trialCard(t) {
+    const d = trialStart(t);
+    const open = t.status === "pending";
+    return `<div class="info-card trial-card ${t.status}">` +
+      `<div class="ic-head"><div class="ic-avatar">${esc(initials(t.full_name))}</div>` +
+      `<div class="ic-title"><div class="nm">${esc(t.full_name)} ${trialPill(t)}</div>` +
+      `<div class="sb">${DOW[d.getDay()]}, ${dmy(d)} · <b>${trialHHMM(t)}–${trialEndHHMM(t)}</b>${t.subject ? " · " + esc(t.subject) : ""}</div></div></div>` +
+      `<div class="ic-rows">` +
+        (t.guardian ? row("Phụ huynh", esc(t.guardian)) : "") +
+        row("Điện thoại", telLink(t.phone)) +
+        (trialTeacher(t) ? row("Giáo viên", esc(trialTeacher(t))) : "") +
+        (t.room ? row("Phòng", esc(t.room)) : "") +
+        (t.note ? row("Ghi chú", esc(t.note)) : "") +
+        (t.status === "converted" && t.student_id && studentsById[t.student_id] ? row("Học sinh", esc(studentsById[t.student_id].full_name)) : "") +
+      `</div>` +
+      `<div class="ic-acts">` +
+        (open ? `<button class="btn btn-sm" data-trialstatus="${t.id}|attended">✓ Đã đến</button><button class="btn btn-sm" data-trialstatus="${t.id}|no_show">✕ Không đến</button>` : "") +
+        (t.status !== "converted" ? `<button class="btn btn-sm" data-trialconvert="${t.id}">🎓 Đăng ký học</button>` : "") +
+        (!open && t.status !== "converted" ? `<button class="btn btn-sm" data-trialstatus="${t.id}|pending">↺ Đặt lại "Chờ"</button>` : "") +
+        `<button class="btn btn-sm" data-trialedit="${t.id}">${ICON_EDIT} Sửa</button>` +
+        `<button class="btn btn-sm danger" data-trialdel="${t.id}">${ICON_DEL} Xóa</button>` +
+      `</div></div>`;
+  }
+  // thẻ gọn: trang Hôm nay + Thời khóa biểu tuần
+  function trialMini(t, compact) {
+    return `<div class="mini trial-mini ${t.status}${compact ? " mini-compact" : ""}" data-trialopen="${t.id}" role="button" tabindex="0">` +
+      `<div class="mini-top"><div class="t">${trialHHMM(t)} – ${trialEndHHMM(t)}</div><span class="trial-tag">HẸN HỌC THỬ</span></div>` +
+      `<div class="s">${esc(t.full_name)} ${t.status !== "pending" ? trialPill(t) : ""}</div>` +
+      `<div class="mini-students">${[t.subject, t.phone, trialTeacher(t), t.room].filter(Boolean).map(esc).join(" · ") || "Khách mới"}</div>` +
+      (t.note ? `<div class="mini-note">${esc(t.note)}</div>` : "") + `</div>`;
+  }
+
+  let trialsRendered = "";
+  function renderTrials() {
+    const q = norm($("trialSearch").value);
+    const key = q + "|" + studentsVersion + "|" + trials.length + "|" + JSON.stringify(trials.map((t) => [t.id, t.status, t.start_at, t.updated_at]));
+    if (key === trialsRendered && $("trialList").childElementCount) return;
+    trialsRendered = key;
+    const todayY = ymd(startOfToday());
+    const list = trials.filter((t) => !q || [t.full_name, t.guardian, t.phone, t.subject, t.note, trialTeacher(t)].some((v) => norm(v).includes(q)));
+    const groups = [
+      ["Hôm nay", list.filter((t) => trialYmd(t) === todayY)],
+      ["Sắp tới", list.filter((t) => trialYmd(t) > todayY)],
+      ["Đã qua", list.filter((t) => trialYmd(t) < todayY).reverse()],
+    ];
+    const pending = trials.filter((t) => t.status === "pending" && trialYmd(t) >= todayY).length;
+    $("trialCount").textContent = pending ? `${pending} lịch hẹn đang chờ` : "";
+    $("trialList").innerHTML = list.length
+      ? groups.filter(([, l]) => l.length).map(([title, l]) => `<h3 class="block-title">${title} · ${l.length}</h3><div class="card-list">${l.map(trialCard).join("")}</div>`).join("")
+      : `<div class="empty"><div class="big">📞</div>${q ? "Không tìm thấy lịch hẹn phù hợp." : "Chưa có lịch hẹn học thử nào.<br>Bấm “+ Thêm lịch hẹn” để ghi lịch hẹn khách mới."}</div>`;
+  }
+  // vẽ lại mọi chỗ có hiện lịch hẹn
+  function refreshTrialViews() {
+    bumpStudents();
+    if (currentView === "trials") renderTrials();
+    else if (currentView === "today") renderToday();
+    else if (currentView === "schedule") renderWeek();
+    updateBadgeFromCache();
+    saveSnapshot();
+  }
+  async function reloadTrials() {
+    const r = await B.listTrials();
+    if (!r.error) trials = r.data || [];
+  }
+
+  function openTrialModal(t, presetDate) {
+    if (!isAdmin()) return;
+    const isEdit = !!t;
+    $("trTitle").textContent = isEdit ? "Sửa lịch hẹn học thử" : "Thêm lịch hẹn học thử";
+    $("trErr").classList.add("hidden");
+    $("trialForm").reset();
+    $("trId").value = isEdit ? t.id : "";
+    fillSubjectSelect($("trSubject"), isEdit ? t.subject : "");
+    $("trTeacher").innerHTML = '<option value="">— Chưa chọn —</option>' +
+      teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((x) => `<option value="${x.id}">${esc(x.full_name)}</option>`).join("");
+    if (isEdit) {
+      $("trName").value = t.full_name || ""; $("trGuardian").value = t.guardian || ""; $("trPhone").value = t.phone || "";
+      $("trTeacher").value = t.teacher_id || "";
+      $("trDate").value = dmy(trialStart(t)); $("trTime").value = trialHHMM(t);
+      $("trDuration").value = t.duration_minutes || 60; $("trRoom").value = t.room || ""; $("trNote").value = t.note || "";
+      $("trStatus").value = t.status || "pending";
+    } else {
+      const d = presetDate ? parseYmd(presetDate) : addDays(startOfToday(), 1);
+      $("trDate").value = dmy(d); $("trTime").value = "16:00"; $("trDuration").value = 60; $("trStatus").value = "pending";
+    }
+    $("trStatusField").hidden = !isEdit;
+    $("trialModal").classList.remove("hidden");
+    $("trName").focus();
+  }
+  function closeTrialModal() { $("trialModal").classList.add("hidden"); }
+  async function saveTrial() {
+    const err = (m) => { const e = $("trErr"); e.textContent = m; e.classList.remove("hidden"); };
+    const name = $("trName").value.trim();
+    if (!name) return err("Nhập tên học sinh / khách hàng.");
+    const dY = dmyToYmd($("trDate").value), tm = normTime($("trTime").value);
+    if (!dY) return err("Ngày hẹn không hợp lệ (dd/mm/yyyy).");
+    if (!tm) return err("Giờ hẹn không hợp lệ (HH:MM).");
+    const [y, mo, da] = dY.split("-").map(Number), [hh, mi] = tm.split(":").map(Number);
+    const id = $("trId").value;
+    const payload = {
+      full_name: name, guardian: $("trGuardian").value.trim() || null, phone: $("trPhone").value.trim() || null,
+      subject: $("trSubject").value.trim() || null, teacher_id: $("trTeacher").value || null,
+      start_at: new Date(y, mo - 1, da, hh, mi).toISOString(),
+      duration_minutes: Math.max(5, Math.min(600, parseInt($("trDuration").value, 10) || 60)),
+      room: $("trRoom").value.trim() || null, note: $("trNote").value.trim() || null,
+    };
+    if (id) payload.status = $("trStatus").value || "pending";
+    else payload.created_by = user.id;
+    $("trSave").disabled = true;
+    try {
+      const r = id ? await B.updateTrial(id, payload) : await B.addTrial(payload);
+      if (r.error) throw r.error;
+      await reloadTrials();
+      closeTrialModal();
+      toast(id ? "Đã cập nhật lịch hẹn." : "Đã thêm lịch hẹn học thử.", "ok");
+      refreshTrialViews();
+    } catch (e) {
+      err("Lưu thất bại: " + (e.message || e) + (/trial_bookings/.test(e.message || "") ? " — cần chạy supabase-migration-7.sql trên Supabase." : ""));
+    } finally { $("trSave").disabled = false; }
+  }
+  async function setTrialStatus(id, status) {
+    const { error } = await B.updateTrial(id, { status });
+    if (error) return toast("Lỗi: " + error.message, "err");
+    const t = trials.find((x) => x.id === id); if (t) { t.status = status; t.updated_at = new Date().toISOString(); }
+    toast(`Đã đánh dấu: ${TRIAL_STATUS[status]}.`, "ok");
+    refreshTrialViews();
+  }
+  async function deleteTrial(id) {
+    const t = trials.find((x) => x.id === id); if (!t) return;
+    if (!confirm(`Xóa lịch hẹn của "${t.full_name}"?`)) return;
+    const { error } = await B.deleteTrial(id);
+    if (error) return toast("Xóa thất bại: " + error.message, "err");
+    trials = trials.filter((x) => x.id !== id);
+    toast("Đã xóa lịch hẹn.", "ok");
+    refreshTrialViews();
+  }
+  // Khách đồng ý học -> tạo hồ sơ học sinh từ lịch hẹn (khóa 12 buổi, học phí theo bảng giá) rồi mở để chỉnh
+  async function convertTrial(id) {
+    const t = trials.find((x) => x.id === id); if (!t) return;
+    if (!confirm(`Tạo hồ sơ học sinh "${t.full_name}" từ lịch hẹn này?`)) return;
+    const before = new Set(students.map((s) => s.id));
+    const { error } = await B.addStudent({
+      full_name: t.full_name, phone: t.phone || null, guardian: t.guardian || null, subject: t.subject || null,
+      teacher_id: t.teacher_id || null, lesson_type: "ca_nhan", total_sessions: 12,
+      tuition_per_session: defaultTuition("ca_nhan") || 0, start_date: ymd(startOfToday()), status: "active",
+      note: "Từ lịch hẹn học thử " + dmy(trialStart(t)) + (t.note ? " — " + t.note : ""),
+    });
+    if (error) return toast("Tạo học sinh thất bại: " + error.message, "err");
+    await loadGlobals();
+    const created = students.find((s) => !before.has(s.id) && s.full_name === t.full_name);
+    const up = await B.updateTrial(id, { status: "converted", student_id: created ? created.id : null });
+    if (up.error) toast("Đã tạo học sinh, nhưng chưa cập nhật được lịch hẹn: " + up.error.message, "err");
+    await reloadTrials();
+    toast("Đã tạo hồ sơ học sinh — kiểm tra lại số buổi & học phí.", "ok");
+    refreshTrialViews();
+    if (created) openStudentModal(created);
+  }
+  function fireTrialReminder(t, mins) {
+    toast(`📞 Hẹn học thử ${trialHHMM(t)}: ${t.full_name} — còn ${fmtMins(mins)}`, "ok");
+    if (devicePushEnabled) return;   // máy chủ đã gửi thông báo đẩy -> tránh trùng
+    if (window.Notification && Notification.permission === "granted" && $("notifPerm").checked) {
+      (async () => { try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        if (reg) await reg.showNotification("OPENMUSIC — Sắp đến giờ hẹn học thử", { body: `${trialHHMM(t)} — ${t.full_name}${t.phone ? " — " + t.phone : ""} — còn ${fmtMins(mins)}`, tag: "trial-" + t.id });
+      } catch (_) {} })();
+    }
+  }
+
+  // =====================================================================
   //  HỌC PHÍ — ĐÓNG TIỀN (admin)
   // =====================================================================
   async function reloadPayments() {
@@ -1868,15 +2119,16 @@
     // chia buổi vào từng khóa (tính trên mọi buổi kể cả tương lai để khớp màn hình), rồi chỉ in buổi đến hôm nay
     const all = (atts || []).filter((a) => schById[a.schedule_id]).map((a) => {
       const s = schById[a.schedule_id];
-      return { schedule_id: a.schedule_id, present: a.present, excused: !!a.excused, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time, s };
+      return { schedule_id: a.schedule_id, present: a.present, excused: !!a.excused, late: !!a.late, late_minutes: a.late_minutes ?? null, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time, s };
     });
     const bd = courseBreakdown(st, all);
     const past = (items) => items.filter((it) => it.a.schedule_date <= todayY);
-    let present = 0, absent = 0, none = 0;
-    all.filter((a) => a.schedule_date <= todayY).forEach((a) => { if (a.present === true) present++; else if (a.present === false) absent++; else none++; });
+    let present = 0, absent = 0, none = 0, lateN = 0;
+    all.filter((a) => a.schedule_date <= todayY).forEach((a) => { if (a.present === true) { present++; if (a.late) lateN++; } else if (a.present === false) absent++; else none++; });
     const rowHtml = (it) => {
       const s = it.a.s, d = parseYmd(s.schedule_date);
-      const status = it.a.present === true ? "✓ Có mặt" : it.a.present === false ? (it.a.excused ? "✕ Vắng (có phép)" : "✕ Vắng") : "• Chưa điểm danh";
+      const status = it.a.present === true ? (it.a.late ? "⏱ Muộn" + (it.a.late_minutes ? " " + it.a.late_minutes + " phút" : "") : "✓ Có mặt")
+        : it.a.present === false ? (it.a.excused ? "✕ Vắng (có phép)" : "✕ Vắng") : "• Chưa điểm danh";
       const noteCell = it.a.note ? esc(it.a.note) : (it.a.present === false ? "—" : "");
       return `<tr><td class='num'>${it.no || "–"}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td><td>${noteCell}</td></tr>`;
     };
@@ -1920,7 +2172,7 @@
       "<div><span class='lbl'>Khóa đang học:</span> Khóa " + (curC.c.seq || bd.cur + 1) + " · " + total + " buổi" + (curC.c.start_date ? " · bắt đầu " + ymdToDmy(curC.c.start_date) : "") + (bd.courses.length > 1 ? " · đã học " + bd.courses.length + " khóa" : "") + "</div>" +
       "<div><span class='lbl'>Học phí đã đóng:</span> " + money(paid.amount) + (paid.sessions ? " · " + paid.sessions + " buổi" : "") + "</div></div>" +
       "<div class='sumline'>Khóa " + (curC.c.seq || bd.cur + 1) + ": đã học " + curC.used + "/" + total + " · còn lại " + remaining + " buổi" + (bd.extraUsed ? " · Buổi lẻ ngoài khóa: " + bd.extraUsed : "") +
-      " &nbsp;|&nbsp; Toàn bộ: có mặt " + present + " · vắng " + absent + " · chưa điểm danh " + none + "</div>" +
+      " &nbsp;|&nbsp; Toàn bộ: có mặt " + present + (lateN ? " (muộn " + lateN + ")" : "") + " · vắng " + absent + " · chưa điểm danh " + none + "</div>" +
       "<table><thead><tr><th class='num'>Buổi</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>" +
       "<tbody>" + (detailRows || "<tr><td colspan='9' style='text-align:center;color:#888'>Chưa có buổi học nào.</td></tr>") + "</tbody></table>" +
       "<div class='sign-row'><div class='col'><div class='role'>XÁC NHẬN CỦA TRUNG TÂM</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
@@ -2304,12 +2556,15 @@
     const alerts = students.map((s) => ({ s, p: studentProgress(s) }))
       .filter((x) => x.p.total && (x.p.remaining <= 2 || x.s.status === "completed"))
       .sort((a, b) => a.p.remaining - b.p.remaining);
-    return { scheds: (scheds || []).filter((s) => !cs.has(s.id)), alerts: alerts.filter(({ s, p }) => !cc.has(courseAlertKey(s, p))), allScheds: scheds || [], allAlerts: alerts };
+    // hẹn học thử hôm nay còn "Chờ" (admin)
+    const allTrials = trialsOn(cl.date).filter((t) => t.status === "pending").sort((a, b) => a.start_at.localeCompare(b.start_at));
+    return { scheds: (scheds || []).filter((s) => !cs.has(s.id)), alerts: alerts.filter(({ s, p }) => !cc.has(courseAlertKey(s, p))), allScheds: scheds || [], allAlerts: alerts,
+      trials: allTrials.filter((t) => !cs.has("t:" + t.id)), allTrials };
   }
   function clearAllNotifications() {
-    const { allScheds, allAlerts } = notifyLists(remindCache.scheds);
+    const { allScheds, allAlerts, allTrials } = notifyLists(remindCache.scheds);
     const cl = readCleared();
-    writeCleared({ date: cl.date, sched: [...new Set([...cl.sched, ...allScheds.map((s) => s.id)])], course: [...new Set([...cl.course, ...allAlerts.map(({ s, p }) => courseAlertKey(s, p))])] });
+    writeCleared({ date: cl.date, sched: [...new Set([...cl.sched, ...allScheds.map((s) => s.id), ...allTrials.map((t) => "t:" + t.id)])], course: [...new Set([...cl.course, ...allAlerts.map(({ s, p }) => courseAlertKey(s, p))])] });
     $("reminderBar").classList.add("hidden");
     renderNotifyFrom(remindCache.scheds);
     toast("Đã xóa tất cả thông báo.", "ok");
@@ -2329,9 +2584,16 @@
     renderNotifyFrom(scheds);
   }
   function renderNotifyFrom(allSchedsToday) {
-    const { scheds, alerts } = notifyLists(allSchedsToday);
+    const { scheds, alerts, trials: dayTrials } = notifyLists(allSchedsToday);
     const now = new Date();
-    $("notifyToday").innerHTML = scheds.length ? scheds.map((s) => {
+    // hẹn học thử hôm nay (admin) — đặt trước lịch học
+    const trialsHtml = dayTrials.map((t) => {
+      const mins = Math.round((trialStart(t) - now) / 60000);
+      const when = mins > 0 ? `<span class="tag-near">còn ${fmtMins(mins)}</span>` : `<span style="color:var(--muted-2)">đã tới giờ</span>`;
+      return `<div class="info-card trial-note"><div class="ic-head"><div class="ic-avatar">📞</div><div class="ic-title"><div class="nm">${trialHHMM(t)} · Hẹn học thử: ${esc(t.full_name)} ${when}</div>` +
+        `<div class="sb">${[t.subject, t.phone, trialTeacher(t), t.room].filter(Boolean).map(esc).join(" · ") || "Khách mới"}</div></div></div></div>`;
+    }).join("");
+    $("notifyToday").innerHTML = trialsHtml + (scheds.length ? scheds.map((s) => {
       const startDt = new Date(`${s.schedule_date}T${s.start_time}`);
       const mins = Math.round((startDt - now) / 60000);
       let when;
@@ -2339,7 +2601,7 @@
       else if (new Date(`${s.schedule_date}T${s.end_time}`) > now) when = `<span class="tag-done">đang diễn ra</span>`;
       else when = `<span style="color:var(--muted-2)">đã xong</span>`;
       return `<div class="info-card"><div class="ic-head"><div class="ic-avatar">⏰</div><div class="ic-title"><div class="nm">${hhmm(s.start_time)} · ${esc(s.subject)} ${when}</div><div class="sb">${esc(teacherDisplay(s))}${s.room ? " · 📍 " + esc(s.room) : ""}</div></div></div></div>`;
-    }).join("") : '<div class="empty">Không có thông báo lịch học mới.</div>';
+    }).join("") : (trialsHtml ? "" : '<div class="empty">Không có thông báo lịch học mới.</div>'));
 
     // khóa học sắp / đã kết thúc
     $("notifyCourses").innerHTML = alerts.length ? alerts.map(({ s, p }) => {
@@ -2349,7 +2611,7 @@
         `<div class="sb">${esc(s.subject || "")} · khóa ${p.seq}: đã học ${p.used}/${p.total} buổi · ${esc((teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name) || "")}${done && isAdmin() ? " · vào Học sinh → “Mở khóa mới”" : ""}</div></div></div></div>`;
     }).join("") : '<div class="empty">Không có cảnh báo khóa học mới.</div>';
 
-    updateNotifyBadge(scheds, now, alerts.length);
+    updateNotifyBadge(scheds, now, alerts.length + dayTrials.filter((t) => trialStart(t) > now).length);
     // bảng Thông báo đang mở -> cập nhật nội dung tại chỗ
     if ($("notificationsDialog").open) $("notificationsContent").innerHTML = '<h3>Lịch học hôm nay</h3>' + $("notifyToday").innerHTML + '<h3>Khóa học cần chú ý</h3>' + $("notifyCourses").innerHTML;
   }
@@ -2375,8 +2637,9 @@
     updateBadgeFromCache();
   }
   function updateBadgeFromCache() {
-    const { scheds, alerts } = notifyLists(remindCache.scheds);   // không đếm mục đã "Xóa tất cả"
-    updateNotifyBadge(scheds, new Date(), alerts.length);
+    const { scheds, alerts, trials: dayTrials } = notifyLists(remindCache.scheds);   // không đếm mục đã "Xóa tất cả"
+    const now = new Date();
+    updateNotifyBadge(scheds, now, alerts.length + dayTrials.filter((t) => trialStart(t) > now).length);
   }
 
   function startReminderLoop() {
@@ -2399,6 +2662,12 @@
         remindedIds.add(s.id);
         fireReminder(s, mins);
       }
+    });
+    // nhắc hẹn học thử (admin) trước số phút cài ở Cài đặt (mặc định 60)
+    const tLead = trialLeadMin();
+    trialsOn(today).filter((t) => t.status === "pending").forEach((t) => {
+      const mins = Math.round((trialStart(t) - now) / 60000);
+      if (mins > 0 && mins <= tLead && !remindedIds.has("t:" + t.id)) { remindedIds.add("t:" + t.id); fireTrialReminder(t, mins); }
     });
     // thanh nhắc lịch
     const bar = $("reminderBar");
@@ -2511,7 +2780,7 @@
       `</div>`
     ).join("");
   }
-  function renderSettings() { initSettingsUI(); renderPricing(); fillRuleSelect($("courseRuleDefault"), defaultCountRule(), false); }
+  function renderSettings() { initSettingsUI(); renderPricing(); fillRuleSelect($("courseRuleDefault"), defaultCountRule(), false); $("trialLeadMin").value = trialLeadMin(); }
   async function savePricing() {
     const dp = readRateInputs($("pricingBody"), "data-dp");
     const dt = readRateInputs($("pricingBody"), "data-dt");
@@ -2706,6 +2975,8 @@
       const add = e.target.closest("[data-addstudent]");
       if (add) { const [sid, stid] = add.dataset.addstudent.split('|'); addStudentToClass(sid, stid); return; }
       const att = e.target.closest("[data-att]"), tp = e.target.closest("[data-tpv]"), rm = e.target.closest("[data-attrm]");
+      const lt = e.target.closest("[data-attlate]");
+      if (lt) { const [sid, stid] = lt.getAttribute("data-attlate").split("|"); markLate(sid, stid); return; }
       if (att) { const [sid, stid, v] = att.getAttribute("data-att").split("|"); markStudent(sid, stid, v === "1"); }
       else if (tp) { const wrap = tp.closest("[data-tp]"); markTeacher(wrap.getAttribute("data-tp"), tp.getAttribute("data-tpv") === "1"); }
       else if (rm) { const [sid, stid] = rm.getAttribute("data-attrm").split("|"); removeStudentFromClass(sid, stid); }
@@ -2715,6 +2986,8 @@
       if (sel) { addStudentToClass(sel.getAttribute("data-addsel"), sel.value); return; }
       const exc = e.target.closest("[data-attexc]");
       if (exc) { const [sid, stid] = exc.getAttribute("data-attexc").split("|"); markExcused(sid, stid, exc.checked); return; }
+      const lm = e.target.closest("[data-latemin]");
+      if (lm) { const [sid, stid] = lm.getAttribute("data-latemin").split("|"); saveLateMinutes(sid, stid, lm.value); return; }
       const note = e.target.closest("[data-attnote]");
       if (note) { const [sid, stid] = note.getAttribute("data-attnote").split("|"); saveAttNote(sid, stid, note.value); }
     });
@@ -2790,6 +3063,32 @@
       if (ed) fillCourseForm(studentsById[$("cmStudentId").value], Number(ed.getAttribute("data-cmedit")));
       else if (de) deleteCourse(de.getAttribute("data-cmdel"));
     });
+    // Hẹn học thử
+    $("addTrialBtn").addEventListener("click", () => openTrialModal(null));
+    $("trialSearch").addEventListener("input", renderTrials);
+    $("trClose").addEventListener("click", closeTrialModal);
+    $("trCancel").addEventListener("click", closeTrialModal);
+    $("trSave").addEventListener("click", saveTrial);
+    $("trialForm").addEventListener("submit", (e) => { e.preventDefault(); saveTrial(); });
+    $("trialModal").addEventListener("click", (e) => { if (e.target === $("trialModal")) closeTrialModal(); });
+    $("trialList").addEventListener("click", (e) => {
+      const st = e.target.closest("[data-trialstatus]"), ed = e.target.closest("[data-trialedit]"), de = e.target.closest("[data-trialdel]"), cv = e.target.closest("[data-trialconvert]");
+      if (st) { const [id, s] = st.getAttribute("data-trialstatus").split("|"); setTrialStatus(id, s); }
+      else if (ed) openTrialModal(trials.find((t) => t.id === ed.getAttribute("data-trialedit")));
+      else if (de) deleteTrial(de.getAttribute("data-trialdel"));
+      else if (cv) convertTrial(cv.getAttribute("data-trialconvert"));
+    });
+    // bấm thẻ hẹn ở trang Hôm nay / Thời khóa biểu -> mở popup sửa
+    const openTrialFrom = (e) => { const c = e.target.closest("[data-trialopen]"); if (!c) return false; openTrialModal(trials.find((t) => t.id === c.getAttribute("data-trialopen"))); return true; };
+    $("todayList").addEventListener("click", openTrialFrom);
+    $("tkbWrap").addEventListener("click", openTrialFrom);
+    $("saveTrialLead").addEventListener("click", async () => {
+      const v = Math.max(0, Math.min(1440, parseInt($("trialLeadMin").value, 10) || 0));
+      const { error } = await B.saveSetting("trial_lead_minutes", v);
+      if (error) return toast("Lưu thất bại: " + error.message, "err");
+      settings.trial_lead_minutes = v; $("trialLeadMin").value = v;
+      toast(`Sẽ nhắc hẹn học thử trước ${v} phút.`, "ok");
+    });
     // Cài đặt — cách trừ buổi mặc định
     $("saveCourseRule").addEventListener("click", async () => {
       const v = $("courseRuleDefault").value;
@@ -2863,8 +3162,8 @@
     $("smLessonType").addEventListener("change", () => { if (!$("smId").value) { const d = defaultTuition($("smLessonType").value); if (d) $("smFee").value = d; } });
 
     // Mask ngày/giờ + nút lịch
-    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire", "payDate", "proFrom", "proTo", "cmStart"].forEach((id) => maskDate($(id)));
-    ["fStart", "fEnd", "payTime"].forEach((id) => maskTime($(id)));
+    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire", "payDate", "proFrom", "proTo", "cmStart", "trDate"].forEach((id) => maskDate($(id)));
+    ["fStart", "fEnd", "payTime", "trTime"].forEach((id) => maskTime($(id)));
     document.querySelectorAll(".cal-btn").forEach(wireCal);
 
     // ESC đóng modal/sidebar
@@ -2877,6 +3176,7 @@
       else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();
       else if (!$("paymentModal").classList.contains("hidden")) closePaymentModal();
       else if (!$("courseModal").classList.contains("hidden")) closeCourseModal();
+      else if (!$("trialModal").classList.contains("hidden")) closeTrialModal();
       else if ($("sidebar").classList.contains("open")) closeSidebar();
     });
   }
