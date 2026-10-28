@@ -232,7 +232,10 @@
     const el = document.createElement("div");
     el.className = "toast" + (type ? " " + type : "");
     el.textContent = msg;
-    $("toastWrap").appendChild(el);
+    // <dialog> mở bằng showModal nằm ở "top layer" che mọi thứ -> đưa khung toast vào trong dialog đang mở
+    const wrap = $("toastWrap"), host = document.querySelector("dialog[open]") || document.body;
+    if (wrap.parentElement !== host) host.appendChild(wrap);
+    wrap.appendChild(el);
     setTimeout(() => { el.style.transition = "opacity .3s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 300); }, 2600);
   }
 
