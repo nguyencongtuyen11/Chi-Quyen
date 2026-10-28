@@ -178,7 +178,8 @@
         const cols = () => ["id", "schedule_id", "student_id", "present", ...opt, "note", "schedules(schedule_date, start_time)"].join(", ");
         let r = await readPages(() => sb.from("attendance").select(cols()).order("id"), 4);
         while (r.error && opt.some((c) => (r.error.message || "").includes(c))) {
-          opt = opt.filter((c) => !(r.error.message || "").includes(c));
+          const msg = r.error.message || "";
+          opt = opt.filter((c) => !msg.includes(c) && !(c === "late_minutes" && msg.includes("late")));   // late & late_minutes đi cùng migration 7
           r = await readPages(() => sb.from("attendance").select(cols()).order("id"), 4);
         }
         if (r.error) return { data: null, error: r.error };
