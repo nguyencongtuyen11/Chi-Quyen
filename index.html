@@ -1,9 +1,21 @@
 <!DOCTYPE html>
-<html lang="vi" data-theme="dark">
+<html lang="vi" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <meta name="theme-color" content="#e7efeb" />
+  <!-- Apply the installed app's chrome color before CSS and app startup. -->
+  <script id="themeBoot">
+    (function () {
+      var theme = 'light';
+      try { if (localStorage.getItem('om-theme') === 'dark') theme = 'dark'; } catch (e) {}
+      var color = theme === 'dark' ? '#0b1a18' : '#e7efeb';
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.colorScheme = theme;
+      document.documentElement.style.backgroundColor = color;
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', color);
+    })();
+  </script>
   <meta name="description" content="Trung tâm Nghệ thuật OPENMUSIC — Thời khóa biểu, điểm danh, tính lương giáo viên và học phí học sinh." />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="OPENMUSIC — Quản lý Trung tâm" />

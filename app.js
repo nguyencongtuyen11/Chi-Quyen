@@ -238,6 +238,9 @@
 
   // ---------- THEME ----------
   function applyTheme(t) {
+    t = t === 'dark' ? 'dark' : 'light';
+    document.documentElement.style.colorScheme = t;
+    document.documentElement.style.backgroundColor = t === 'dark' ? '#0b1a18' : '#e7efeb';
     document.documentElement.setAttribute("data-theme", t);
     $("themeBtn").innerHTML = t === "dark" ? MOON : SUN;
     const meta = document.querySelector('meta[name="theme-color"]');

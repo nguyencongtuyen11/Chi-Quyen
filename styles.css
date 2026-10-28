@@ -995,3 +995,34 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 /* A vector clef stays consistent across iPhone and desktop fonts. */
 .ambient .treble-clef { font-size: 0; background: rgba(22,100,79,.07); -webkit-mask: url("treble-clef.svg") center / contain no-repeat; mask: url("treble-clef.svg") center / contain no-repeat; }
 [data-theme="dark"] .ambient .treble-clef { background: rgba(170,230,210,.06); }
+
+/* iPhone browser + installed PWA: one chrome color, hardware-provided insets.
+   Keep status-bar style=default for readable system text in light/dark mode. */
+html { background-color: var(--bg); }
+body, .layout { min-height: 100vh; min-height: 100dvh; }
+.ambient { background-color: var(--bg); }
+@media (max-width: 900px) {
+  /* The opaque header also keeps scrolled cards out of the clock/notch area. */
+  .topbar { background: var(--bg); isolation: isolate;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+  /* Fade decoration in below the header so there is no contrasting top band. */
+  .ambient { -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent calc(68px + env(safe-area-inset-top, 0px)), #000 calc(180px + env(safe-area-inset-top, 0px)));
+    mask-image: linear-gradient(to bottom, transparent 0, transparent calc(68px + env(safe-area-inset-top, 0px)), #000 calc(180px + env(safe-area-inset-top, 0px))); }
+  .auth-overlay { padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+  .content { padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #notificationsDialog { bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px); }
+  #pageSearchDialog { max-height: min(75dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 90px)); }
+}
+@media (max-width: 900px) and (orientation: landscape) {
+  .modal-backdrop { padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+}
+/* Keep the decorative layer above the body paint while remaining behind UI. */
+body { isolation: isolate; }

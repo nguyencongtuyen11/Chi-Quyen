@@ -144,3 +144,13 @@ Không chạy lại setup cũ sau migration này vì các policy cũ sẽ mở l
 
 `MIGRATION_MODE` trong `app.js` hiện vẫn bật theo luồng nhập dữ liệu cũ; giáo viên được điểm danh bù quá khứ.
 Tắt khi trung tâm kết thúc nhập dữ liệu. Đây là giới hạn giao diện, không thay thế RLS trên server.
+
+### Vùng an toàn iPhone (cập nhật tiếp 28/10/2026)
+
+Màu theme được áp dụng trong head trước khi tải ứng dụng, đồng bộ màu nền gốc, header và theme-color.
+Header có nền đồng màu để không lộ nội dung cuộn dưới đồng hồ; vùng tai thỏ, Dynamic Island,
+home indicator và cạnh màn hình ngang dùng env(safe-area-inset-*), không suy đoán theo tên máy.
+Giữ status bar style=default để hệ thống chọn chữ phù hợp với theme. Service worker đổi cache sang om-v3-iphone-chrome.
+
+Đã đạt 28 kiểm thử, gồm 5 trường hợp màu theme khi khởi động. Chưa xác minh trên iPhone vật lý.
+Sau deploy, đóng/mở lại PWA; nếu màu thanh trạng thái vẫn giữ bản cài cũ, thêm lại biểu tượng từ Safari.
