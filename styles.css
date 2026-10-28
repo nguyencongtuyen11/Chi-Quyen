@@ -1036,19 +1036,25 @@ body { isolation: isolate; }
 
 .push-controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
 
-/* ===== Đổi trang mượt (View Transitions): trang cũ mờ đi, trang mới trượt nhẹ lên; thanh tab đứng yên ===== */
+/* ===== Đổi trang: trang mới trượt nhẹ lên + hiện dần (chỉ opacity/transform — GPU rẻ, không chụp trang) ===== */
 @media (prefers-reduced-motion: no-preference) {
-  .content { view-transition-name: om-page; }
-  .tabbar { view-transition-name: om-tabbar; }
-  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
-  ::view-transition-group(om-tabbar), ::view-transition-old(om-tabbar), ::view-transition-new(om-tabbar) { animation: none; }
-  ::view-transition-old(om-tabbar) { display: none; }
-  ::view-transition-group(om-page) { animation-duration: .34s; }
-  ::view-transition-old(om-page) { animation: omPageOut .16s ease-in both; }
-  ::view-transition-new(om-page) { animation: omPageIn .34s cubic-bezier(.2,.8,.2,1) both; }
+  .view:not([hidden]) { animation: omPageIn .3s cubic-bezier(.2,.8,.2,1) both; }
 }
-@keyframes omPageOut { to { opacity: 0; transform: scale(.985); } }
-@keyframes omPageIn { from { opacity: 0; transform: translateY(14px) scale(.99); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes omPageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ===== HIỆU NĂNG iPhone: kính mờ (backdrop-filter) chỉ giữ ở vài mảng cố định =====
+   Đo thực tế: trang Học sinh có 762 lớp kính mờ (125 thẻ × 5 nút) -> giật/lag, dễ văng Safari.
+   Thẻ, nút, ô nhập lặp lại dùng nền trắng ngọc hơi trong thay vì làm mờ nền phía sau. */
+.btn:not(.primary), .info-card, .class-card, .stat-chip, .day-block, .empty, .table-wrap, .profit-card,
+.settings-card, .account, .icon-btn, .toolbar select, .search, .datepick, .inline input, .tp-toggle, .mini, .att-btn, .extra-pick {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+.btn:not(.primary), .account, .icon-btn, .toolbar select, .search, .datepick, .inline input, .tp-toggle {
+  background-color: color-mix(in srgb, var(--card-solid) 78%, transparent);
+}
+.info-card, .class-card, .stat-chip, .day-block, .empty, .table-wrap, .profit-card, .settings-card {
+  background-color: color-mix(in srgb, var(--card-solid) 86%, transparent);
+}
 
 /* ===== MÀN CHỜ: nốt nhạc bay vào quanh logo ===== */
 .splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; align-content: center; gap: 26px;

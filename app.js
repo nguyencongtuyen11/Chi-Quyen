@@ -452,6 +452,7 @@
     user = null; currentUid = null; myProfile = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
+    todayCache.clear();
     todayRequest++; weekRequest++; profitRequest++; salaryRequest++;
     allPayments = []; paidByStudent = {}; coursesByStudent = {}; attRowsByStudent = {}; courseInfo = {}; settings = {}; teacherStatsById = {};
     todayScheds = []; todayAtt = []; allForWeek = []; attByWeek = {}; weekStudNames = {}; weekAbsentNames = {};
@@ -636,10 +637,9 @@
     // các mục không có trên thanh tab (Giáo viên, Lương…) -> sáng nút "Quản lý"
     $("tabMore").classList.toggle("active", !document.querySelector(`.tab[data-view="${view}"]:not([hidden])`));
     moveTabPill(changed);
-    // đổi trang: mờ trang cũ, trượt nhẹ trang mới lên (View Transitions — iOS 18+; máy cũ đổi ngay)
-    const swap = () => document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
-    if (changed && document.startViewTransition && !reduceMotion()) document.startViewTransition(swap);
-    else swap();
+    // Không dùng View Transitions: nó chụp cả trang (đo thực tế: trang Học sinh 2,4s). Trang mới chỉ
+    // mờ dần bằng CSS (.view animation) — rẻ, mượt trên iPhone.
+    document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
     $("pageTitle").textContent = PAGE_TITLE[view] || "";
     $("heroTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
     $("topViewTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
@@ -697,6 +697,16 @@
     }
     // tải cả tuần 1 lần: vừa lấy lớp của ngày đang xem, vừa đánh dấu các ngày có lớp trên dải tuần
     const t = ymd(attDate), ws = startOfWeek(attDate);
+    // Ngày đã xem: hiện NGAY dữ liệu lần trước (không chờ mạng ~0,3-0,5s), rồi tải bản mới ở nền;
+    // chỉ vẽ lại nếu dữ liệu thật sự đổi (tránh nháy, không làm mất ô đang gõ).
+    const ck = ymd(ws) + "|" + (tf || "all"), hit = todayCache.get(ck);
+    const shown = !!(hit && hit.atts[t]);
+    if (shown) {
+      renderWeekStrip(hit.scheds);
+      todayScheds = hit.scheds.filter((s) => s.schedule_date === t);
+      todayAtt = hit.atts[t];
+      renderToday();
+    }
     // dùng dữ liệu tải trước lúc đăng nhập (1 lần, đúng ngày) nếu có
     const pre = todayPrefetch && todayPrefetch.key === t ? todayPrefetch : null;
     todayPrefetch = null;
@@ -709,22 +719,30 @@
     } else {
       const { data, error: scheduleError } = await B.listSchedules({ from: ymd(ws), to: ymd(addDays(ws, 6)), teacherId: tf });
       if (request !== todayRequest) return;
-      if (scheduleError) { $("todayList").innerHTML = `<div class="empty">Không thể tải lịch: ${esc(scheduleError.message)}</div>`; $("todayStats").innerHTML = ""; return; }
+      if (scheduleError) { if (!shown) { $("todayList").innerHTML = `<div class="empty">Không thể tải lịch: ${esc(scheduleError.message)}</div>`; $("todayStats").innerHTML = ""; } return; }
       weekScheds = data || [];
     }
-    renderWeekStrip(weekScheds);
-    todayScheds = weekScheds.filter((s) => s.schedule_date === t);
-    const ids = new Set(todayScheds.map((s) => s.id));
+    const ids = new Set(weekScheds.filter((s) => s.schedule_date === t).map((s) => s.id));
     if (atts) atts = atts.filter((a) => ids.has(a.schedule_id));
     else {
       const { data, error: attError } = await B.listAttendanceBySchedules([...ids]);
       if (request !== todayRequest) return;
-      if (attError) { $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
+      if (attError) { if (!shown) $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
       atts = data || [];
     }
+    const sig = JSON.stringify([weekScheds, atts]);
+    const entry = todayCache.get(ck) || { scheds: [], atts: {}, sig: {} };
+    const same = shown && entry.sig[t] === sig && JSON.stringify([entry.scheds, entry.atts[t]]) === sig;
+    entry.scheds = weekScheds; entry.sig[t] = sig;
+    if (same) return;                 // dữ liệu không đổi -> giữ nguyên màn hình đang hiện
+    entry.atts[t] = atts;
+    todayCache.set(ck, entry);
+    renderWeekStrip(weekScheds);
+    todayScheds = weekScheds.filter((s) => s.schedule_date === t);
     todayAtt = atts;
     renderToday();
   }
+  const todayCache = new Map();   // "tuần|giáo viên" -> { scheds, atts: {ngày: [...]}, sig }
 
   function attFor(scheduleId) { return todayAtt.filter((a) => a.schedule_id === scheduleId); }
 
