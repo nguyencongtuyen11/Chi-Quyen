@@ -1079,3 +1079,6 @@ body { isolation: isolate; }
   .sp-stage i, .sp-logo, .sp-name { animation: none; }
   .sp-stage i { transform: translate(var(--ex), var(--ey)); opacity: .9; }
 }
+.extra-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.extra-pick { padding: 6px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); background: var(--card); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.extra-pick.on { background: var(--primary-grad); color: #fff; border-color: transparent; }

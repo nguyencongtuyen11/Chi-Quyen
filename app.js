@@ -103,11 +103,14 @@
     const sorted = rows.slice().sort((x, y) => (x.schedule_date + (x.start_time || "")).localeCompare(y.schedule_date + (y.start_time || "")));
     let i = 0;
     sorted.forEach((a) => {
-      // sang khóa sau khi khóa hiện tại đã đủ buổi, hoặc buổi đã tới ngày bắt đầu của khóa sau
+      // sang khóa sau:
+      //  - khóa sau CÓ ngày bắt đầu -> chỉ sang khi buổi đã tới ngày đó (cô chọn buổi bắt đầu khóa mới;
+      //    buổi trước ngày đó mà khóa cũ đã đủ thì giữ là buổi lẻ; khóa cũ chưa đủ thì coi như ngắt sớm)
+      //  - khóa sau KHÔNG có ngày bắt đầu -> sang ngay khi khóa hiện tại đủ buổi
       while (i + 1 < out.courses.length) {
         const cur = out.courses[i], next = out.courses[i + 1].c;
         const full = cur.c.total_sessions > 0 && cur.used >= cur.c.total_sessions;
-        if (full || (next.start_date && a.schedule_date >= next.start_date)) i++; else break;
+        if (next.start_date ? a.schedule_date >= next.start_date : full) i++; else break;
       }
       const cur = out.courses[i];
       const full = cur.c.total_sessions > 0 && cur.used >= cur.c.total_sessions;
@@ -1491,8 +1494,19 @@
       `</div>`;
     }).join("") +
     (bd.extra.length ? `<div class="course-item extra"><div class="ci-main"><div class="ci-name">Buổi lẻ ngoài khóa · <span class="extra-txt">${bd.extraUsed} buổi</span></div>` +
-      `<div class="ci-sub">${span(bd.extra)} — mở khóa mới bắt đầu từ ${ymdToDmy(bd.extra[0].a.schedule_date)} để chuyển các buổi này sang khóa mới (đánh số lại từ 1).</div></div></div>` : "");
+      extraPickHtml(bd) + `</div></div>` : "");
     $("cmList").innerHTML = html;
+  }
+  // Buổi lẻ SAU khóa cuối -> nút chọn làm buổi 1 của khóa mới. Buổi lẻ nằm TRƯỚC khóa cuối (giữa 2 khóa)
+  // không thể mở khóa chen vào -> hướng dẫn sửa ngày bắt đầu của khóa cuối để gộp.
+  function extraPickHtml(bd) {
+    const last = bd.courses[bd.courses.length - 1];
+    const lastFirst = last.items.length ? last.items[0].a.schedule_date : null;
+    const after = bd.extra.filter((it) => !lastFirst || it.a.schedule_date > lastFirst);
+    const before = bd.extra.length - after.length;
+    const chip = (it) => `<button type="button" class="extra-pick" data-cmstart="${it.a.schedule_date}">${it.no ? "Lẻ " + it.no + " · " : ""}${ymdToDmy(it.a.schedule_date).slice(0, 5)}</button>`;
+    return (after.length ? `<div class="ci-sub">Chọn buổi bắt đầu khóa mới — buổi được chọn thành buổi 1, các buổi trước đó vẫn là buổi lẻ:</div><div class="extra-picks">${after.map(chip).join("")}</div>` : "") +
+      (before ? `<div class="ci-sub">${before} buổi lẻ nằm trước khóa ${last.c.seq || bd.courses.length}. Muốn gộp vào khóa này: bấm sửa khóa ${last.c.seq || bd.courses.length} và chọn ngày bắt đầu sớm hơn.</div>` : "");
   }
   // editIdx: số thứ tự khóa cần sửa; bỏ trống = form mở khóa mới
   function fillCourseForm(st, editIdx) {
@@ -2604,6 +2618,14 @@
     $("cmTotal").addEventListener("input", () => setCmTotal($("cmTotal").value));
     $("cmList").addEventListener("click", (e) => {
       const ed = e.target.closest("[data-cmedit]"), de = e.target.closest("[data-cmdel]");
+      const pick = e.target.closest("[data-cmstart]");
+      if (pick) {   // chọn buổi lẻ làm buổi 1 của khóa mới -> điền ngày vào form mở khóa mới
+        if ($("cmId").value !== "") fillCourseForm(studentsById[$("cmStudentId").value]);
+        $("cmStart").value = ymdToDmy(pick.getAttribute("data-cmstart"));
+        document.querySelectorAll("#cmList [data-cmstart]").forEach((b) => b.classList.toggle("on", b === pick));
+        $("cmStart").scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
+      }
       if (ed) fillCourseForm(studentsById[$("cmStudentId").value], Number(ed.getAttribute("data-cmedit")));
       else if (de) deleteCourse(de.getAttribute("data-cmdel"));
     });
