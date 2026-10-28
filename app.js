@@ -428,6 +428,7 @@
       switchView("today");
       hideSplash(true);
       fromSnapshot = true;
+      console.info("[OPENMUSIC load] hiện từ bản lưu trên máy:", Math.round(performance.now()) + "ms sau khi mở trang");
     }
     // 2) Hồ sơ, dữ liệu chung và lịch tuần này tải CÙNG LÚC từ Supabase (cập nhật đè lên bản lưu)
     const profileP = traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user))
