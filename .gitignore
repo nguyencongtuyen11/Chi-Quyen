@@ -19,3 +19,6 @@ node_modules/
 supabase/.temp/
 .env
 .env.*
+
+# Private push provisioning files
+supabase/*.local.sql

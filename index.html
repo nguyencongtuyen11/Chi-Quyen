@@ -97,7 +97,7 @@
       </header>
 
       <!-- Nhắc lịch hôm nay (hiện ở mọi trang) -->
-      <dialog id="notificationsDialog" aria-labelledby="notificationsTitle"><div class="dialog-top"><h2 id="notificationsTitle">Thông báo</h2><button type="button" id="notificationsClose" aria-label="Đóng thông báo">×</button></div><div class="reminder-bar hidden" id="reminderBar"></div><div id="notificationsContent"></div></dialog>
+      <dialog id="notificationsDialog" aria-labelledby="notificationsTitle"><div class="dialog-top"><h2 id="notificationsTitle">Thông báo</h2><button type="button" id="notificationsClose" aria-label="Đóng thông báo">×</button></div><div class="reminder-bar hidden" id="reminderBar"></div><div class="push-controls"><button class="btn primary" id="enableDevicePush">Bật thông báo thiết bị</button><button class="btn" id="testDevicePush">Gửi thử</button></div><div id="notificationsContent"></div></dialog>
 
       <div class="content">
 
@@ -245,7 +245,7 @@
               <label for="leadMin">Nhắc trước (phút)</label>
               <input id="leadMin" type="number" min="0" max="1440" step="5" value="120" />
             </div>
-            <label class="check-row"><input type="checkbox" id="notifPerm" /> Bật thông báo trình duyệt (popup)</label>
+            <label class="check-row"><input type="checkbox" id="notifPerm" /> Nhận thông báo trên thiết bị, kể cả khi đóng app</label>
             <button class="btn" id="testNotify">Thử thông báo</button>
           </div>
 

@@ -1026,3 +1026,5 @@ body, .layout { min-height: 100vh; min-height: 100dvh; }
 }
 /* Keep the decorative layer above the body paint while remaining behind UI. */
 body { isolation: isolate; }
+
+.push-controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }

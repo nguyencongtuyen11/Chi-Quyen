@@ -1,0 +1,4 @@
+project_id = "Chi-Quyen"
+[functions.web-push]
+# Config is public; all user actions validate the JWT and cron requires its own secret.
+verify_jwt = false

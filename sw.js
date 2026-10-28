@@ -6,7 +6,7 @@
 //  - Request tới Supabase (khác domain, dữ liệu thật) KHÔNG bao giờ cache.
 //  Đổi số VERSION khi muốn xoá sạch cache cũ trên máy người dùng.
 // =====================================================================
-const VERSION = "om-v7-lower-tabbar";
+const VERSION = "om-v8-web-push";
 const SHELL = [
   "./",
   "index.html",
@@ -70,4 +70,28 @@ self.addEventListener("fetch", (e) => {
         .then((hit) => hit || Response.error())
     )
   );
+});
+
+
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (_) {}
+  if (!payload || typeof payload !== 'object') payload = {};
+  // Every push must produce a visible notification on iOS.
+  event.waitUntil(self.registration.showNotification(payload.title || 'OPENMUSIC', {
+    body: payload.body || 'Bạn có thông báo mới.',
+    icon: '/logo-192.png', badge: '/logo-192.png', tag: payload.tag || 'openmusic',
+    data: {url: payload.url || '/'}
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const target = new URL(event.notification.data?.url || '/', self.location.origin);
+    if (target.origin !== self.location.origin) return;
+    const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const current = windows.find(client => new URL(client.url).origin === target.origin);
+    if (current) { await current.navigate(target.href); await current.focus(); }
+    else await self.clients.openWindow(target.href);
+  })());
 });

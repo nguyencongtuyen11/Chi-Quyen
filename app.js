@@ -415,6 +415,7 @@
     initSettingsUI();
     switchView("today");
     startReminderLoop();
+    refreshDevicePush();
     } catch (error) {
       if (currentUid !== loginId) return;
       currentUid = null;
@@ -425,6 +426,7 @@
   }
 
   function onSignedOut() {
+    devicePushEnabled = false;
     user = null; currentUid = null; myProfile = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
@@ -2145,10 +2147,85 @@
         `<button class="rb-x" title="Ẩn" aria-label="Ẩn">×</button>`;
     } else bar.classList.add("hidden");
   }
-  function fireReminder(s, mins) {
-    // Nhắc lịch xuất hiện trong bảng thông báo, không đẩy popup lên màn hình chính.
-    if (window.Notification && Notification.permission === "granted" && $("notifPerm").checked) {
-      try { new Notification("OPENMUSIC — Sắp đến giờ lớp", { body: `${hhmm(s.start_time)} · ${s.subject} (${teacherDisplay(s)})${s.room ? " · " + s.room : ""}\nCòn ${fmtMins(mins)} nữa.` }); } catch (e) {}
+  let devicePushEnabled = false;
+  async function pushCall(action, extra = {}) {
+    if (!B.raw) throw new Error('Thông báo máy chủ chỉ dùng trên tài khoản Supabase thật.');
+    const {data,error} = await B.raw.functions.invoke('web-push', {body:{action,...extra}});
+    if (error) {
+      let message = 'Máy chủ thông báo chưa được kích hoạt. Cần triển khai Web Push trên Supabase.';
+      try { const detail = await error.context.json(); if (detail.error) message = detail.error; } catch (_) {}
+      throw new Error(message);
+    }
+    if (data && data.error) throw new Error(data.error);
+    return data;
+  }
+  async function pushRegistration() {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (ios && !(navigator.standalone || window.matchMedia('(display-mode: standalone)').matches)) throw new Error('Mở OPENMUSIC từ biểu tượng đã Thêm vào màn hình chính để bật thông báo.');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.Notification) throw new Error('Trình duyệt này chưa hỗ trợ Web Push.');
+    await navigator.serviceWorker.register('sw.js');
+    return navigator.serviceWorker.ready;
+  }
+  function pushKeyBytes(value) {
+    const raw = atob(value.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4-value.length%4)%4));
+    return Uint8Array.from(raw, c=>c.charCodeAt(0));
+  }
+  async function setDevicePush(enabled) {
+    if (!enabled) {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      const sub = await registration?.pushManager.getSubscription();
+      if (sub) { await pushCall('unsubscribe',{subscription:sub.toJSON()}); await sub.unsubscribe(); }
+      devicePushEnabled = false; $('notifPerm').checked = false;
+      return;
+    }
+    // iOS permission request must start in the user's click/change handler.
+    if (!window.Notification) throw new Error('Hãy mở app từ màn hình chính để bật thông báo.');
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (permission !== 'granted') throw new Error('Chưa được cấp quyền thông báo. Kiểm tra Cài đặt iPhone → Thông báo.');
+    const registration = await pushRegistration();
+    const {publicKey} = await pushCall('config');
+    const current = await registration.pushManager.getSubscription();
+    const subscription = current || await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyBytes(publicKey)});
+    try { await pushCall('subscribe',{subscription:subscription.toJSON(),leadMinutes:getLeadMin()}); }
+    catch (error) { if (!current) await subscription.unsubscribe(); throw error; }
+    devicePushEnabled = true; $('notifPerm').checked = true;
+  }
+  async function refreshDevicePush() {
+    devicePushEnabled = false;
+    if (B.raw && 'serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = await reg?.pushManager.getSubscription();
+        if (sub) {
+          const {data,error} = await B.raw.from('push_subscriptions').select('id').eq('endpoint',sub.endpoint).maybeSingle();
+          devicePushEnabled = !error && !!data;
+        }
+      } catch (_) {}
+    }
+    $('notifPerm').checked = devicePushEnabled;
+  }
+  async function toggleDevicePush(enabled) {
+    $('notifPerm').disabled = true;
+    try { await setDevicePush(enabled); toast(enabled ? 'Đã bật thông báo trên thiết bị này, kể cả khi đóng app.' : 'Đã tắt thông báo trên thiết bị này.','ok'); }
+    catch (error) { $('notifPerm').checked = devicePushEnabled; toast(error.message,'err'); }
+    finally { $('notifPerm').disabled = false; }
+  }
+  async function testDevicePush() {
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (!sub || !devicePushEnabled) throw new Error('Hãy bật thông báo trên thiết bị này trước.');
+      await pushCall('test',{subscription:sub.toJSON()});
+      toast('Máy chủ đã gửi thông báo thử.','ok');
+    } catch (error) { toast(error.message,'err'); }
+  }
+  async function fireReminder(s, mins) {
+    if (devicePushEnabled) return; // Scheduled push owns delivery; avoid duplicate reminders.
+    if (window.Notification && Notification.permission === 'granted' && $('notifPerm').checked) {
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        if (reg) await reg.showNotification('OPENMUSIC — Sắp đến giờ lớp',{body:`${hhmm(s.start_time)} — ${s.subject} — Còn ${fmtMins(mins)}`,tag:'lesson-'+s.id});
+      } catch (_) {}
     }
   }
 
@@ -2157,7 +2234,8 @@
   // =====================================================================
   function initSettingsUI() {
     $("leadMin").value = getLeadMin();
-    if (window.Notification) $("notifPerm").checked = Notification.permission === "granted";
+    $("notifPerm").checked = devicePushEnabled;
+    refreshDevicePush();
   }
   function renderPricing() {
     $("pricingStudent").innerHTML = '<option value="">Chọn học sinh…</option>' + students.slice().sort((a,b) => a.full_name.localeCompare(b.full_name,'vi')).map(s => `<option value="${esc(s.id)}">${esc(s.full_name)}</option>`).join('');
@@ -2268,7 +2346,11 @@
     // Menu tài khoản (admin xem lịch GV khác)
     $("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
     $("accountMenu").addEventListener("click", (e) => {
-      if (e.target.closest("#logoutBtn")) { closeAccountMenu(); B.signOut(); return; }
+      if (e.target.closest("#logoutBtn")) {
+        closeAccountMenu();
+        (async () => { try { if (devicePushEnabled) await setDevicePush(false); } catch (_) { toast('Chưa tắt được thông báo máy chủ trên thiết bị này. Hãy tắt quyền trong Cài đặt iPhone nếu máy dùng chung.','err'); } await B.signOut(); })();
+        return;
+      }
       const it = e.target.closest("[data-amteacher]");
       if (it) viewTeacherSchedule(it.getAttribute("data-amteacher"));
     });
@@ -2485,15 +2567,16 @@
     $("tuitionExport").addEventListener("click", exportTuitionCSV);
 
     // Cài đặt
-    $("leadMin").addEventListener("change", () => { let v = parseInt($("leadMin").value, 10); if (isNaN(v) || v < 0) v = 0; setLeadMin(v); remindedIds = new Set(); toast("Đã lưu: nhắc trước " + v + " phút.", "ok"); });
-    $("notifPerm").addEventListener("change", async () => {
-      if ($("notifPerm").checked && window.Notification) {
-        const perm = await Notification.requestPermission();
-        $("notifPerm").checked = perm === "granted";
-        if (perm !== "granted") toast("Trình duyệt chưa cho phép thông báo.", "err");
-      }
+    $('leadMin').addEventListener('change', async () => {
+      const value = Math.min(1440,Math.max(0,Math.floor(Number($('leadMin').value)||0)));
+      $('leadMin').value = value; setLeadMin(value); remindedIds = new Set();
+      if (devicePushEnabled) { try { await setDevicePush(true); } catch (error) { toast(error.message,'err'); return; } }
+      toast('Đã lưu: nhắc trước '+value+' phút.','ok');
     });
-    $("testNotify").addEventListener("click", () => { fireReminder({ start_time: "00:00", subject: "Thử thông báo", teacher_name: "OPENMUSIC", room: "" }, 0); });
+    $('notifPerm').addEventListener('change',()=>toggleDevicePush($('notifPerm').checked));
+    $('enableDevicePush').addEventListener('click',()=>toggleDevicePush(true));
+    $('testDevicePush').addEventListener('click',testDevicePush);
+    $('testNotify').addEventListener('click',testDevicePush);
     $("savePricing").addEventListener("click", savePricing);
     $("adjustStudentPricing").addEventListener("click", () => {
       const sid = $("pricingStudent").value;

@@ -180,3 +180,47 @@ Quá 15 giây không phản hồi sẽ hiện lỗi có tên nhóm dữ liệu t
 Đây là công cụ khoanh vùng lỗi, không phải xác nhận nguyên nhân đã được sửa.
 Đã đạt 31 kiểm thử. Đo HTTP từ máy phát triển: HTML 433ms, app.js 59ms, CSS 55ms, Supabase JS 343ms;
 các số đo không đại diện cho truy vấn đăng nhập hay tốc độ iPhone.
+
+## Web Push khi đóng ứng dụng
+
+Code hỗ trợ iOS Home Screen Web Push qua Supabase Edge Function `web-push`.
+Trong app: nút chuông → **Bật thông báo thiết bị** → **Gửi thử**. Thiết bị phải cấp quyền thông báo.
+Giáo viên nhận nhắc lớp của mình; admin nhận nhắc toàn bộ lớp. Thời điểm theo Asia/Ho_Chi_Minh;
+lead_minutes lưu riêng từng thiết bị, từ 0 đến 1440 phút. Push có thể trễ do mạng, Focus hoặc iOS.
+
+### Kích hoạt máy chủ một lần (bắt buộc)
+
+Code trên Vercel không tự tạo Edge Function và cron. Cần đăng nhập CLI tài khoản sở hữu dự án:
+
+```powershell
+cd 'D:\chi Quyen'
+npx --yes supabase login --agent no --output-format text
+.\scripts\enable-web-push.ps1
+```
+
+Script kích hoạt đúng dự án `ivilqvnljoucbsxzdvwf`, chạy migration push, tạo khóa VAPID cục bộ,
+đưa secrets lên Supabase, deploy function bằng Management API và tạo lịch kiểm tra mỗi phút qua pg_cron/pg_net.
+Khóa riêng ở `.env.push`, SQL kích hoạt chứa cron secret ở `supabase/push-activate.local.sql`:
+cả hai đều bị gitignore. Không gửi khóa/token vào chat hoặc commit. Giữ nguyên `.env.push` khi deploy lại,
+vì đổi VAPID key sẽ yêu cầu các thiết bị đăng ký nhận lại.
+
+Sau kích hoạt: mở app từ màn hình chính iPhone, bấm chuông → bật thông báo → Cho phép → Gửi thử.
+Thử một buổi học của đúng giáo viên, đặt nhắc trước 5 phút, đóng app và đợi thời điểm gửi để xác nhận đầu cuối.
+Không thể xác nhận gửi thành công chỉ bằng kết quả unit test.
+
+### Quyền và độ tin cậy
+
+Bảng subscriptions chỉ đọc bởi chủ thiết bị; ghi qua function kiểm tra JWT bằng Auth.getUser.
+Cron có secret riêng trong Vault. Endpoint gửi phải thuộc các nhà cung cấp push đã cho phép;
+không nhận URL tùy ý. Claim delivery dùng khóa duy nhất và lease để giảm gửi trùng, tự xóa endpoint hết hạn (404/410).
+Push không bảo đảm đúng từng giây hay exactly-once: lỗi kết nối sau khi nhà cung cấp nhận có thể gây gửi lại;
+tag cố định giúp hệ điều hành gộp thông báo. Mỗi lượt gửi tối đa 50 thông báo, tối đa 5 yêu cầu song song.
+Nhắc lịch bắt kịp chậm dưới 5 phút; gián đoạn lâu hơn có thể bỏ lỡ thông báo.
+Đăng xuất chủ động gỡ đăng ký trên thiết bị, nếu máy chủ không liên lạc được sẽ báo cần tắt quyền trên iPhone.
+
+Kiểm thử: `npm test` (36 trường hợp) và Deno crypto test:
+
+```powershell
+npx --yes deno check --config supabase/functions/web-push/deno.json supabase/functions/web-push/index.ts
+npx --yes deno test --allow-env=ECE_KEYLOG,NODE_DEBUG --config supabase/functions/web-push/deno.json supabase/functions/web-push/crypto_test.ts
+```
