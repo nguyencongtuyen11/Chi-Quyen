@@ -1088,3 +1088,7 @@ body { isolation: isolate; }
 .extra-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .extra-pick { padding: 6px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); background: var(--card); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .extra-pick.on { background: var(--primary-grad); color: #fff; border-color: transparent; }
+/* nút "Xóa tất cả" trong bảng Thông báo (nút tròn × giữ nguyên bên phải) */
+.dialog-top h2 { margin-right: auto !important; }
+.dialog-top .notify-clear { width: auto !important; height: 36px !important; padding: 0 14px; border-radius: 999px !important; border: 1px solid var(--border) !important;
+  background: color-mix(in srgb, var(--card-solid) 80%, transparent) !important; color: var(--bad) !important; font: inherit; font-size: 13.5px !important; font-weight: 650; cursor: pointer; }
