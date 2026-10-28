@@ -46,7 +46,7 @@ Khi **chưa** điền Supabase, web tự chạy **chế độ DEMO** với dữ 
 | Giáo viên | `co.lan@openmusic.vn` | `123456` |
 | Giáo viên | `thay.nam@openmusic.vn` | `123456` |
 
-> Dữ liệu DEMO lưu trên trình duyệt. Vào **Cài đặt → Đặt lại dữ liệu DEMO** để khôi phục dữ liệu mẫu ban đầu.
+> Dữ liệu thử nghiệm chỉ lưu trên trình duyệt của bạn; thêm `?demo=1` để sử dụng riêng dữ liệu mẫu.
 
 ---
 
@@ -124,3 +124,23 @@ Tính năng "Quên mật khẩu" gửi email chứa **liên kết đặt lại**
 ## ☁️ Đưa lên mạng
 Web tĩnh, deploy dễ: kéo-thả thư mục lên **Netlify** (https://app.netlify.com/drop), **Vercel** hoặc **Cloudflare Pages**.
 Nhớ cập nhật **Site URL / Redirect URLs** trong Supabase theo tên miền mới (mục Quên mật khẩu ở trên).
+
+
+## Cập nhật giao diện và kiểm tra (28/10/2026)
+
+- Giao diện kính mờ màu xanh ngọc, thanh tiêu đề gọn và thanh điều hướng dưới cho iPhone.
+- Tìm kiếm bằng popup trên thanh tiêu đề; giao diện sáng/tối nằm trong Quản lý.
+- Học phí riêng hoặc giảm theo %, ô tiền định dạng dấu chấm theo nhóm ba chữ số.
+- Lương có thẻ trên điện thoại và bảng tổng quan trong **Xem tất cả**; báo cáo thu/lương gọn trong một thẻ.
+- Tiền thu lọc theo ngày Việt Nam. Truy vấn phân trang để không bỏ các dòng sau mốc 1.000.
+- Supabase JS 2.118.0 được lưu tại `vendor/` kèm giấy phép, không phụ thuộc CDN khi mở lại PWA.
+
+Chạy kiểm tra: `npm ci`, `npm run check`, `npm test`. GitHub Actions chạy cùng bộ kiểm tra khi push/PR.
+
+Database hiện có: áp dụng `supabase/migrations/20261028042601_courses_and_profile_hardening.sql`
+(bản tương đương tại `supabase-migration-6.sql`) sau các migration trước đó. Script chạy trong transaction,
+không xóa dữ liệu, bổ sung khóa học/vắng có phép, ngăn tài khoản tự nâng vai trò và giới hạn dữ liệu giáo viên được đọc.
+Không chạy lại setup cũ sau migration này vì các policy cũ sẽ mở lại quyền đọc toàn bộ.
+
+`MIGRATION_MODE` trong `app.js` hiện vẫn bật theo luồng nhập dữ liệu cũ; giáo viên được điểm danh bù quá khứ.
+Tắt khi trung tâm kết thúc nhập dữ liệu. Đây là giới hạn giao diện, không thay thế RLS trên server.

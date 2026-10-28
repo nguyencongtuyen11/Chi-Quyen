@@ -11,3 +11,11 @@ Desktop.ini
 .vscode/
 .idea/
 *.log
+
+# Development dependencies
+node_modules/
+
+# Supabase CLI local cache
+supabase/.temp/
+.env
+.env.*

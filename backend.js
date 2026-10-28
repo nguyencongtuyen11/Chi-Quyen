@@ -24,7 +24,7 @@
     } catch (e) { return false; }
   }
 
-  const MODE = configReady() && window.supabase && !forcedDemo() ? "supabase" : "demo";
+  const MODE = forcedDemo() || !configReady() ? "demo" : (window.supabase ? "supabase" : "unavailable");
   const nowISO = () => new Date().toISOString();
   const uid = () => "id-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -33,6 +33,26 @@
   // ===================================================================
   function makeSupabaseBackend() {
     const sb = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
+
+    // Fetch every row; a single Data API request is capped by the server.
+    async function readPages(query) {
+      const rows = [], pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const {data, error} = await query().range(from, from + pageSize - 1);
+        if (error) return {data: null, error};
+        rows.push(...(data || []));
+        if (!data || data.length < pageSize) return {data: rows, error: null};
+      }
+    }
+    async function readIds(table, column, ids) {
+      const rows = [], unique = [...new Set(ids || [])];
+      for (let i = 0; i < unique.length; i += 100) {
+        const result = await readPages(() => sb.from(table).select('*').in(column, unique.slice(i, i + 100)).order('id'));
+        if (result.error) return result;
+        rows.push(...result.data);
+      }
+      return {data: rows, error: null};
+    }
 
     return {
       mode: "supabase",
@@ -68,31 +88,33 @@
         }
         return data || { id: u.id, full_name: u.email, email: u.email, role: "teacher" };
       },
-      listProfiles() { return sb.from("profiles").select("id, full_name, email, role"); },
+      listProfiles() { return readPages(() => sb.from("profiles").select("id, full_name, email, role").order("id")); },
 
       // ---- TEACHERS ----
-      listTeachers() { return sb.from("teachers").select("*"); },
+      listTeachers() { return readPages(() => sb.from("teachers").select("*").order("id")); },
       addTeacher(o) { return sb.from("teachers").insert(o); },
       updateTeacher(id, o) { return sb.from("teachers").update(o).eq("id", id); },
       deleteTeacher(id) { return sb.from("teachers").delete().eq("id", id); },
 
       // ---- STUDENTS ----
-      listStudents() { return sb.from("students").select("*"); },
+      listStudents() { return readPages(() => sb.from("students").select("*").order("id")); },
       addStudent(o) { return sb.from("students").insert(o); },
       updateStudent(id, o) { return sb.from("students").update(o).eq("id", id); },
       deleteStudent(id) { return sb.from("students").delete().eq("id", id); },
 
       // ---- PAYMENTS (học phí) ----
-      listPayments() { return sb.from("payments").select("*").order("paid_at", { ascending: false }); },
+      listPayments() { return readPages(() => sb.from("payments").select("*").order("paid_at", { ascending: false }).order("id")); },
       addPayment(o) { return sb.from("payments").insert(o); },
       updatePayment(id, o) { return sb.from("payments").update(o).eq("id", id); },
       deletePayment(id) { return sb.from("payments").delete().eq("id", id); },
 
       // ---- SCHEDULES ----
       async listSchedules({ from, to, teacherId }) {
-        let q = sb.from("schedules").select("*").gte("schedule_date", from).lte("schedule_date", to).order("start_time", { ascending: true });
-        if (teacherId) q = q.eq("teacher_id", teacherId);
-        return q;
+        return readPages(() => {
+          let q = sb.from("schedules").select("*").gte("schedule_date", from).lte("schedule_date", to).order("schedule_date").order("start_time").order("id");
+          if (teacherId) q = q.eq("teacher_id", teacherId);
+          return q;
+        });
       },
       addSchedule(o) { return sb.from("schedules").insert(o).select("*").single(); },
       addSchedulesBulk(rows) { return sb.from("schedules").insert(rows).select("*"); },
@@ -103,10 +125,10 @@
       // ---- ATTENDANCE ----
       async listAttendanceBySchedules(ids) {
         if (!ids || !ids.length) return { data: [], error: null };
-        return sb.from("attendance").select("*").in("schedule_id", ids);
+        return readIds("attendance", "schedule_id", ids);
       },
-      listAttendanceByStudent(studentId) { return sb.from("attendance").select("*").eq("student_id", studentId); },
-      async listSchedulesByIds(ids) { if (!ids || !ids.length) return { data: [], error: null }; return sb.from("schedules").select("*").in("id", ids); },
+      listAttendanceByStudent(studentId) { return readPages(() => sb.from("attendance").select("*").eq("student_id", studentId).order("id")); },
+      async listSchedulesByIds(ids) { if (!ids || !ids.length) return { data: [], error: null }; return readIds("schedules", "id", ids); },
       setAttendance(scheduleId, studentId, present, byUserId) {
         return sb.from("attendance").upsert(
           { schedule_id: scheduleId, student_id: studentId, present, marked_at: nowISO(), marked_by: byUserId },
@@ -120,12 +142,47 @@
           { onConflict: "schedule_id,student_id" }
         );
       },
+      // Đánh dấu vắng CÓ PHÉP (không trừ buổi của khóa) — cần migration 6
+      setAttendanceExcused(scheduleId, studentId, excused, byUserId) {
+        return sb.from("attendance").upsert(
+          { schedule_id: scheduleId, student_id: studentId, excused, marked_at: nowISO(), marked_by: byUserId },
+          { onConflict: "schedule_id,student_id" }
+        );
+      },
       removeAttendance(scheduleId, studentId) {
         return sb.from("attendance").delete().eq("schedule_id", scheduleId).eq("student_id", studentId);
       },
+      // Toàn bộ điểm danh kèm ngày/giờ học (để chia buổi vào từng khóa).
+      // Supabase trả tối đa 1000 dòng/lần -> lấy theo trang.
+      async listAttendanceWithDates() {
+        const PAGE = 1000, out = [];
+        let cols = "id, schedule_id, student_id, present, excused, note, schedules(schedule_date, start_time)";
+        for (let from = 0; ; from += PAGE) {
+          let { data, error } = await sb.from("attendance").select(cols).order("id").range(from, from + PAGE - 1);
+          if (error && cols.includes("excused")) {   // chưa chạy migration 6 -> bỏ cột excused
+            cols = cols.replace(" excused,", ""); from -= PAGE; continue;
+          }
+          if (error) return { data: null, error };
+          (data || []).forEach((r) => {
+            const s = r.schedules || {};
+            if (s.schedule_date) out.push({ schedule_id: r.schedule_id, student_id: r.student_id, present: r.present, excused: !!r.excused, note: r.note, schedule_date: s.schedule_date, start_time: s.start_time });
+          });
+          if (!data || data.length < PAGE) break;
+        }
+        return { data: out, error: null };
+      },
+
+      // ---- COURSES (khóa học) — cần migration 6 ----
+      async listCourses() {
+        const r = await readPages(() => sb.from("courses").select("*").order("seq", { ascending: true }).order("id"));
+        return r.error ? { data: [], error: r.error } : r;   // chưa có bảng -> coi như chưa có khóa
+      },
+      addCourse(o) { return sb.from("courses").insert(o).select("*").single(); },
+      updateCourse(id, o) { return sb.from("courses").update(o).eq("id", id); },
+      deleteCourse(id) { return sb.from("courses").delete().eq("id", id); },
       // Đếm số buổi present=true theo từng học sinh (toàn thời gian) -> {student_id: count}
       async countPresentByStudent() {
-        const { data, error } = await sb.from("attendance").select("student_id, present").eq("present", true);
+        const { data, error } = await readPages(() => sb.from("attendance").select("student_id, present").eq("present", true).order("id"));
         if (error) return { data: {}, error };
         const m = {};
         (data || []).forEach((r) => { m[r.student_id] = (m[r.student_id] || 0) + 1; });
@@ -134,7 +191,7 @@
 
       // ---- SETTINGS (bảng giá mặc định) ----
       async getSettings() {
-        const { data, error } = await sb.from("app_settings").select("key, value");
+        const { data, error } = await readPages(() => sb.from("app_settings").select("key, value").order("key"));
         if (error) return { data: {}, error };
         const m = {}; (data || []).forEach((r) => (m[r.key] = r.value));
         return { data: m, error: null };
@@ -145,7 +202,7 @@
 
       // ---- THỐNG KÊ GIÁO VIÊN (đã dạy / nghỉ) ----
       async teacherStats() {
-        const { data, error } = await sb.from("schedules").select("teacher_id, teacher_present");
+        const { data, error } = await readPages(() => sb.from("schedules").select("teacher_id, teacher_present").order("id"));
         if (error) return { data: {}, error };
         const m = {};
         (data || []).forEach((r) => { const x = m[r.teacher_id] || (m[r.teacher_id] = { taught: 0, off: 0 }); if (r.teacher_present === true) x.taught++; else if (r.teacher_present === false) x.off++; });
@@ -319,6 +376,7 @@
         store.students = store.students.filter((x) => x.id !== id);
         store.attendance = store.attendance.filter((a) => a.student_id !== id);
         store.payments = (store.payments || []).filter((p) => p.student_id !== id);
+        store.courses = (store.courses || []).filter((c) => c.student_id !== id);
         save(store); return ok(true);
       },
 
@@ -364,6 +422,23 @@
         else { a = { id: uid(), schedule_id: scheduleId, student_id: studentId, present: null, note, marked_at: nowISO(), marked_by: byUserId }; store.attendance.push(a); }
         save(store); return ok(a);
       },
+      async setAttendanceExcused(scheduleId, studentId, excused, byUserId) {
+        let a = store.attendance.find((x) => x.schedule_id === scheduleId && x.student_id === studentId);
+        if (a) { a.excused = excused; a.marked_at = nowISO(); a.marked_by = byUserId; }
+        else { a = { id: uid(), schedule_id: scheduleId, student_id: studentId, present: false, excused, marked_at: nowISO(), marked_by: byUserId }; store.attendance.push(a); }
+        save(store); return ok(a);
+      },
+      async listAttendanceWithDates() {
+        const byId = {}; store.schedules.forEach((s) => (byId[s.id] = s));
+        return ok(store.attendance.filter((a) => byId[a.schedule_id]).map((a) => {
+          const s = byId[a.schedule_id];
+          return { schedule_id: a.schedule_id, student_id: a.student_id, present: a.present, excused: !!a.excused, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time };
+        }));
+      },
+      async listCourses() { return ok((store.courses || []).slice().sort((a, b) => a.seq - b.seq)); },
+      async addCourse(o) { store.courses = store.courses || []; const r = Object.assign({ id: uid(), created_at: nowISO() }, o); store.courses.push(r); save(store); return ok(r); },
+      async updateCourse(id, o) { const c = (store.courses || []).find((x) => x.id === id); if (c) Object.assign(c, o); save(store); return ok(true); },
+      async deleteCourse(id) { store.courses = (store.courses || []).filter((x) => x.id !== id); save(store); return ok(true); },
       async removeAttendance(scheduleId, studentId) {
         store.attendance = store.attendance.filter((x) => !(x.schedule_id === scheduleId && x.student_id === studentId));
         save(store); return ok(true);
@@ -385,6 +460,8 @@
     };
   }
 
-  window.Backend = MODE === "supabase" ? makeSupabaseBackend() : makeDemoBackend();
+  const unavailable = {mode: 'unavailable', isRecovery: () => false, onAuthChange() {}, getUser: async () => null,
+    signIn: async () => ({error: {message: 'Không tải được kết nối dữ liệu. Hãy tải lại trang.'}})};
+  window.Backend = MODE === "supabase" ? makeSupabaseBackend() : MODE === "demo" ? makeDemoBackend() : unavailable;
   window.BACKEND_MODE = MODE;
 })();

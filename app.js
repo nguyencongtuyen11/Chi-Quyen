@@ -16,6 +16,7 @@
   // ---------- STATE ----------
   let user = null;
   let currentUid = null;
+  let todayRequest = 0, weekRequest = 0, profitRequest = 0, salaryRequest = 0;
   let myProfile = null;
   let profilesList = [], profilesById = {};
   let teachers = [], teachersById = {}, myTeacher = null;
@@ -24,6 +25,9 @@
   let teacherStatsById = {};        // teacher_id -> { taught, off }
   let allPayments = [];             // danh sách đóng học phí (admin)
   let paidByStudent = {};           // student_id -> { amount, sessions }
+  let coursesByStudent = {};        // student_id -> [khóa trong DB, theo seq]
+  let attRowsByStudent = {};        // student_id -> [điểm danh kèm ngày] (admin) — để chia buổi vào khóa
+  let courseInfo = {};              // student_id -> kết quả courseBreakdown()
   let viewDate = startOfToday();
   let attDate = startOfToday();   // ngày đang điểm danh (mặc định hôm nay)
   let currentView = "today";
@@ -43,6 +47,9 @@
   ];
   const DOW = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
   const DOW_SHORT = { 0: "CN", 1: "Th 2", 2: "Th 3", 3: "Th 4", 4: "Th 5", 5: "Th 6", 6: "Th 7" };
+  const DOW_TINY = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+  // tiêu đề lớn (hero) — ngắn gọn kiểu iOS
+  const HERO_TITLE = { today: "Hôm nay", schedule: "Lịch học", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí", profit: "Lãi / Lỗ", notify: "Thông báo", settings: "Cài đặt" };
   const PAGE_TITLE = { today: "Hôm nay & Điểm danh", schedule: "Thời khóa biểu", students: "Học sinh", teachers: "Giáo viên", salary: "Tính lương", tuition: "Học phí học sinh", profit: "Lãi/Lỗ trung tâm", notify: "Thông báo", settings: "Cài đặt" };
 
   // Môn học & loại lớp (cá nhân / đôi / nhóm)
@@ -63,6 +70,80 @@
     return parts.filter(Boolean).join(" ");
   }
   let settings = {};
+
+  // ===== KHÓA HỌC =====
+  //  Mỗi HS học nhiều khóa (12 / 24 buổi / tùy chỉnh). Buổi được xếp vào khóa theo thứ tự thời gian:
+  //  khóa đủ số buổi -> sang khóa sau (đánh số lại từ 1); chưa có khóa sau -> "buổi lẻ".
+  //  Buổi nào được TRỪ vào khóa do cô chọn (mặc định ở Cài đặt, chỉnh riêng từng khóa):
+  const COUNT_RULES = [
+    { key: "present",           label: "Chỉ buổi có mặt" },
+    { key: "present_unexcused", label: "Có mặt + vắng không phép" },
+    { key: "all",               label: "Mọi buổi đã điểm danh (kể cả vắng)" },
+  ];
+  function defaultCountRule() { const r = settings.course_count_rule; return COUNT_RULES.some((x) => x.key === r) ? r : "present"; }
+  function countRuleLabel(k) { const r = COUNT_RULES.find((x) => x.key === k); return r ? r.label : ""; }
+  function ruleOf(c) { return (c && c.count_rule) || defaultCountRule(); }
+  function sessionCounts(a, rule) {
+    if (a.present === true) return true;
+    if (a.present !== false) return false;               // chưa điểm danh
+    return rule === "all" || (rule === "present_unexcused" && !a.excused);
+  }
+  // Danh sách khóa của HS. Chưa có dòng nào trong bảng courses -> 1 khóa "ảo" lấy từ hồ sơ HS (dữ liệu cũ).
+  function coursesFor(st) {
+    const list = coursesByStudent[st.id];
+    if (list && list.length) return list;
+    return [{ id: null, seq: 1, total_sessions: st.total_sessions || 0, tuition_per_session: st.tuition_per_session || 0, lesson_type: st.lesson_type, start_date: st.start_date, count_rule: null }];
+  }
+  // rows: [{ schedule_date, start_time, present, excused, ... }] của 1 HS
+  //  -> { courses: [{ c, items: [{ a, no }], used }], extra: [{ a, no }], extraUsed, cur }
+  //  no = số thứ tự buổi trong khóa (null = buổi không bị trừ, vd vắng có phép / chưa điểm danh)
+  function courseBreakdown(st, rows) {
+    const list = coursesFor(st);
+    const out = { courses: list.map((c) => ({ c, items: [], used: 0 })), extra: [], extraUsed: 0, cur: 0 };
+    const sorted = rows.slice().sort((x, y) => (x.schedule_date + (x.start_time || "")).localeCompare(y.schedule_date + (y.start_time || "")));
+    let i = 0;
+    sorted.forEach((a) => {
+      // sang khóa sau khi khóa hiện tại đã đủ buổi, hoặc buổi đã tới ngày bắt đầu của khóa sau
+      while (i + 1 < out.courses.length) {
+        const cur = out.courses[i], next = out.courses[i + 1].c;
+        const full = cur.c.total_sessions > 0 && cur.used >= cur.c.total_sessions;
+        if (full || (next.start_date && a.schedule_date >= next.start_date)) i++; else break;
+      }
+      const cur = out.courses[i];
+      const full = cur.c.total_sessions > 0 && cur.used >= cur.c.total_sessions;
+      const counts = sessionCounts(a, ruleOf(cur.c));
+      if (full) { out.extra.push({ a, no: counts ? ++out.extraUsed : null }); return; }
+      cur.items.push({ a, no: counts ? ++cur.used : null });
+    });
+    out.cur = i;
+    return out;
+  }
+  function rebuildCourseInfo(studentId) {
+    const st = studentsById[studentId]; if (!st) return;
+    courseInfo[studentId] = courseBreakdown(st, attRowsByStudent[studentId] || []);
+  }
+  // Quy tắc tính buổi của khóa đang học (dùng khi điểm danh, kể cả tài khoản giáo viên)
+  function studentRule(studentId) {
+    const st = studentsById[studentId]; if (!st) return defaultCountRule();
+    const bd = courseInfo[studentId];
+    const list = coursesFor(st);
+    return ruleOf(bd ? bd.courses[bd.cur].c : list[list.length - 1]);
+  }
+  // Cập nhật bộ nhớ đệm điểm danh sau khi điểm danh ở trang Hôm nay (để số buổi/khóa luôn đúng)
+  function patchAttCache(scheduleId, studentId, patch) {
+    const list = attRowsByStudent[studentId] || (attRowsByStudent[studentId] = []);
+    let r = list.find((x) => x.schedule_id === scheduleId);
+    if (!r) {
+      const s = todayScheds.find((x) => x.id === scheduleId); if (!s) return;
+      r = { schedule_id: scheduleId, student_id: studentId, present: null, excused: false, schedule_date: s.schedule_date, start_time: s.start_time };
+      list.push(r);
+    }
+    if (patch === null) list.splice(list.indexOf(r), 1); else Object.assign(r, patch);
+    rebuildCourseInfo(studentId);
+  }
+  // không dấu, chữ thường — để tìm "nguyen an" ra "Nguyễn An"
+  function norm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "d").toLowerCase().trim(); }
+
   function defaultPay(type) { const m = settings.default_pay || {}; return Number(m[type]) || 0; }
   function defaultTuition(type) { const m = settings.default_tuition || {}; return Number(m[type]) || 0; }
   function teacherPayFor(teacher, type) {
@@ -108,6 +189,8 @@
 
   const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>';
+  const NOTE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>';
   const NOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 18V5l12-2v13"/><path d="M9 9l12-2"/></svg>';
   const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
   const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
@@ -158,12 +241,12 @@
     document.documentElement.setAttribute("data-theme", t);
     $("themeBtn").innerHTML = t === "dark" ? MOON : SUN;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", t === "dark" ? "#0a0e1a" : "#f6f9fc");
+    if (meta) meta.setAttribute("content", t === "dark" ? "#0b1a18" : "#e7efeb");
     try { localStorage.setItem("om-theme", t); } catch (e) {}
   }
   function initTheme() {
-    let t = "dark";
-    try { t = localStorage.getItem("om-theme") || "dark"; } catch (e) {}
+    let t = "light";
+    try { t = localStorage.getItem("om-theme") || "light"; } catch (e) {}
     applyTheme(t);
   }
 
@@ -183,6 +266,12 @@
     initSidebarCollapse();
     wireEvents();
 
+    if (B.mode === 'unavailable') {
+      showAuth(); setAuthMode('login');
+      authErr('Không tải được kết nối dữ liệu. Hãy tải lại trang.');
+      $('authPrimary').disabled = true;
+      return;
+    }
     recovering = B.isRecovery();
     if (recovering) { showAuth(); setAuthMode("reset"); }
 
@@ -199,15 +288,8 @@
   }
 
   function setupModeUI() {
-    const demo = window.BACKEND_MODE === "demo";
-    const accStr = "admin@openmusic.vn · co.lan@openmusic.vn · thay.nam@openmusic.vn — mật khẩu: 123456";
-    $("demoAccounts").textContent = demo ? accStr : "Đang dùng Supabase — đăng nhập bằng tài khoản thật của trung tâm.";
-    $("demoCard").hidden = !demo;
-    if (demo) {
-      const h = $("authDemoHint");
-      h.hidden = false;
-      h.innerHTML = "<b>Chế độ DEMO</b> — đăng nhập thử:<br>• Admin: <b>admin@openmusic.vn</b><br>• Giáo viên: <b>co.lan@openmusic.vn</b> / <b>thay.nam@openmusic.vn</b><br>Mật khẩu: <b>123456</b>";
-    }
+    $("authDemoHint").hidden = true;
+    $("authDemoHint").textContent = "";
   }
 
   // ---------- THU GỌN SIDEBAR ----------
@@ -309,7 +391,10 @@
   async function afterLogin() {
     if (currentUid === user.id) return;
     currentUid = user.id;
-    myProfile = await B.ensureProfile(user);
+    const loginId = currentUid;
+    const profile = await B.ensureProfile(user);
+    if (currentUid !== loginId) return;
+    myProfile = profile;
     hideAuth();
     $("app").classList.remove("hidden");
 
@@ -319,6 +404,7 @@
     $("accRole").innerHTML = isAdmin() ? 'Quản trị viên <span class="badge-admin">ADMIN</span>' : "Giáo viên";
 
     await loadGlobals();
+    if (currentUid !== loginId) return;
     applyRoleUI();
     initSettingsUI();
     switchView("today");
@@ -329,7 +415,13 @@
     user = null; currentUid = null; myProfile = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
+    todayRequest++; weekRequest++; profitRequest++; salaryRequest++;
+    allPayments = []; paidByStudent = {}; coursesByStudent = {}; attRowsByStudent = {}; courseInfo = {}; settings = {}; teacherStatsById = {};
+    todayScheds = []; todayAtt = []; allForWeek = []; attByWeek = {}; weekStudNames = {}; weekAbsentNames = {};
+    remindCache = { date: null, scheds: [] };
     remindedIds = new Set();
+    closeSidebar(); closeAccountMenu();
+    document.querySelectorAll("dialog[open]").forEach(d => d.close());
     if (reminderTimer) { clearInterval(reminderTimer); reminderTimer = null; }
     $("app").classList.add("hidden");
     closeAllModals();
@@ -341,19 +433,26 @@
   function applyRoleUI() {
     const admin = isAdmin();
     document.querySelectorAll(".admin-only").forEach((el) => { el.hidden = !admin; });
-    $("accCaret").hidden = !admin;
-    $("accountBtn").classList.toggle("clickable", admin);
+    document.querySelectorAll(".nonadmin-only").forEach((el) => { el.hidden = admin; });
+    $("accCaret").hidden = true;
+    $("accountBtn").classList.add("clickable");
+    $("accountBtn").setAttribute("aria-label", "Tài khoản và đăng xuất");
+    $("accountBtn").setAttribute("aria-expanded", "false");
   }
 
   // ---------- MENU TÀI KHOẢN: admin xem lịch dạy của giáo viên khác ----------
   function renderAccountMenu() {
     const cur = $("teacherFilter").value || "all";
-    let h = '<div class="am-head">Xem lịch dạy của giáo viên</div>';
+    let h = '<div class="am-head">Tài khoản</div>';
+    if (isAdmin()) {
+    h += '<div class="am-head">Xem lịch dạy của giáo viên</div>';
     h += amItem("all", "Tất cả giáo viên", "Xem toàn bộ lịch", cur === "all");
     teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).forEach((t) => {
       const acc = t.user_id && profilesById[t.user_id] ? (profilesById[t.user_id].email || profilesById[t.user_id].full_name) : "chưa gắn tài khoản";
       h += amItem(t.id, t.full_name, acc, cur === t.id);
     });
+    }
+    h += '<button type="button" class="account-logout" id="logoutBtn">Đăng xuất <span aria-hidden="true">↗</span></button>';
     $("accountMenu").innerHTML = h;
   }
   function amItem(id, name, sub, active) {
@@ -361,12 +460,12 @@
       `<div class="am-info"><div class="am-nm">${esc(name)}</div><div class="am-sub">${esc(sub)}</div></div></button>`;
   }
   function toggleAccountMenu() {
-    if (!isAdmin()) return;
     const m = $("accountMenu");
     if (m.classList.contains("hidden")) { renderAccountMenu(); m.classList.remove("hidden"); }
     else m.classList.add("hidden");
+    $("accountBtn").setAttribute("aria-expanded", String(!m.classList.contains("hidden")));
   }
-  function closeAccountMenu() { $("accountMenu").classList.add("hidden"); }
+  function closeAccountMenu() { $("accountMenu").classList.add("hidden"); $("accountBtn").setAttribute("aria-expanded", "false"); }
   function viewTeacherSchedule(id) {
     fillTeacherFilter();
     $("teacherFilter").value = id;
@@ -380,9 +479,14 @@
   //  TẢI DỮ LIỆU DÙNG CHUNG
   // =====================================================================
   async function loadGlobals() {
-    const [tRes, sRes, pRes, cRes, setRes, tsRes] = await Promise.all([
-      B.listTeachers(), B.listStudents(), B.listProfiles(), B.countPresentByStudent(), B.getSettings(), B.teacherStats(),
+    const loadUid = currentUid;
+    const [tRes, sRes, pRes, cRes, setRes, tsRes, coRes] = await Promise.all([
+      B.listTeachers(), B.listStudents(), B.listProfiles(), B.countPresentByStudent(), B.getSettings(), B.teacherStats(), B.listCourses(),
     ]);
+    if (currentUid !== loadUid) return;
+    coursesByStudent = {};
+    (coRes.data || []).forEach((c) => (coursesByStudent[c.student_id] || (coursesByStudent[c.student_id] = [])).push(c));
+    Object.values(coursesByStudent).forEach((l) => l.sort((a, b) => a.seq - b.seq));
     settings = setRes.data || {};
     teacherStatsById = tsRes.data || {};
     teachers = tRes.data || [];
@@ -395,14 +499,19 @@
     myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
 
     allPayments = []; paidByStudent = {};
+    attRowsByStudent = {}; courseInfo = {};
+    // điểm danh kèm ngày -> chia buổi vào khóa (giáo viên chỉ đọc được lớp mình dạy -> tính trên các buổi đó)
+    const [payRes, attRes] = await Promise.all([isAdmin() ? B.listPayments() : { data: [] }, B.listAttendanceWithDates()]);
+    if (currentUid !== loadUid) return;
     if (isAdmin()) {
-      const payRes = await B.listPayments();
       allPayments = payRes.data || [];
       allPayments.forEach((p) => {
         const m = paidByStudent[p.student_id] || (paidByStudent[p.student_id] = { amount: 0, sessions: 0 });
         m.amount += Number(p.amount) || 0; m.sessions += Number(p.sessions) || 0;
       });
     }
+    (attRes.data || []).forEach((r) => (attRowsByStudent[r.student_id] || (attRowsByStudent[r.student_id] = [])).push(r));
+    students.forEach((s) => rebuildCourseInfo(s.id));
   }
 
   // hồ sơ giáo viên dùng để lọc lịch theo vai trò
@@ -420,9 +529,15 @@
   // =====================================================================
   function switchView(view) {
     currentView = view;
-    document.querySelectorAll(".menu-item").forEach((b) => b.classList.toggle("active", b.getAttribute("data-view") === view));
+    document.querySelectorAll(".menu-item, .tab[data-view]").forEach((b) => b.classList.toggle("active", b.getAttribute("data-view") === view));
+    // các mục không có trên thanh tab (Giáo viên, Lương…) -> sáng nút "Quản lý"
+    $("tabMore").classList.toggle("active", !document.querySelector(`.tab[data-view="${view}"]:not([hidden])`));
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
     $("pageTitle").textContent = PAGE_TITLE[view] || "";
+    $("heroTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
+    $("topViewTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
+    $("studentCount").hidden = view !== "students";
+    $("pageSearchBtn").hidden = !['students', 'teachers', 'tuition'].includes(view);
     closeSidebar();
     if (view === "today") loadToday();
     else if (view === "schedule") { fillTeacherFilter(); setViewDate(viewDate); }
@@ -448,40 +563,59 @@
   function setAttDate(d) { attDate = new Date(d); attDate.setHours(0, 0, 0, 0); loadToday(); }
 
   async function loadToday() {
-    const isToday = ymd(attDate) === ymd(startOfToday());
-    $("todayTitle").textContent = isToday ? "Lớp học hôm nay" : "Lớp học ngày " + dmy(attDate);
-    $("todayDate").textContent = `${DOW[attDate.getDay()]}, ${dmy(attDate)}`;
+    const request = ++todayRequest;
+    $("todayTitle").textContent = `${DOW[attDate.getDay()]}, ${attDate.getDate()} tháng ${attDate.getMonth() + 1}`;
+    $("todayDate").textContent = "";
     $("attDatePicker").value = dmy(attDate);
     $("migrationBanner").hidden = !(MIGRATION_MODE && ymd(attDate) < ymd(startOfToday()));
     const tf = scheduleTeacherFilter();
     if (tf === "__none__") {
+      renderWeekStrip([]);
       $("todayList").innerHTML = '<div class="empty"><div class="big">🔗</div>Tài khoản của bạn chưa được gắn vào giáo viên nào.<br>Hãy nhờ Admin gắn ở mục “Giáo viên”.</div>';
       $("todayStats").innerHTML = "";
       return;
     }
-    const t = ymd(attDate);
-    const { data: scheds } = await B.listSchedules({ from: t, to: t, teacherId: tf });
-    todayScheds = scheds || [];
+    // tải cả tuần 1 lần: vừa lấy lớp của ngày đang xem, vừa đánh dấu các ngày có lớp trên dải tuần
+    const t = ymd(attDate), ws = startOfWeek(attDate);
+    const { data: weekScheds, error: scheduleError } = await B.listSchedules({ from: ymd(ws), to: ymd(addDays(ws, 6)), teacherId: tf });
+    if (request !== todayRequest) return;
+    if (scheduleError) { $("todayList").innerHTML = `<div class="empty">Không thể tải lịch: ${esc(scheduleError.message)}</div>`; $("todayStats").innerHTML = ""; return; }
+    renderWeekStrip(weekScheds || []);
+    todayScheds = (weekScheds || []).filter((s) => s.schedule_date === t);
     const ids = todayScheds.map((s) => s.id);
-    const { data: atts } = await B.listAttendanceBySchedules(ids);
+    const { data: atts, error: attError } = await B.listAttendanceBySchedules(ids);
+    if (request !== todayRequest) return;
+    if (attError) { $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
     todayAtt = atts || [];
     renderToday();
   }
 
   function attFor(scheduleId) { return todayAtt.filter((a) => a.schedule_id === scheduleId); }
 
+  // Dải 7 ngày (T2 → CN) của tuần chứa ngày đang xem; chấm nhỏ = ngày có lớp
+  function renderWeekStrip(weekScheds) {
+    const ws = startOfWeek(attDate), sel = ymd(attDate), today = ymd(startOfToday());
+    const busy = new Set(weekScheds.map((s) => s.schedule_date));
+    $("wsMonthLabel").textContent = `Tháng ${attDate.getMonth() + 1}, ${attDate.getFullYear()}`;
+    let h = "";
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i), k = ymd(d);
+      h += `<button type="button" class="ws-day${k === sel ? " active" : ""}${k === today ? " today" : ""}" data-wsday="${k}">` +
+        `<span class="wd">${DOW_TINY[d.getDay()]}</span><strong>${d.getDate()}</strong><i class="dot${busy.has(k) ? "" : " none"}"></i></button>`;
+    }
+    $("wsDays").innerHTML = h;
+  }
+
   function renderToday() {
     // thống kê
     let present = 0, absent = 0, none = 0;
     todayAtt.forEach((a) => { if (a.present === true) present++; else if (a.present === false) absent++; else none++; });
-    $("todayStats").innerHTML =
-      chip(todayScheds.length, "Lớp", "primary") +
-      chip(present, "Có mặt", "good") +
-      chip(absent, "Vắng", "bad") +
-      chip(none, "Chưa ĐD", "warn");
+    $("todayStats").innerHTML = [[todayScheds.length,"lớp","primary"],[present,"có mặt","good"],[absent,"vắng","bad"],[none,"chưa ĐD","warn"]]
+      .map(([n,label,cls]) => `<span class="today-stat ${cls}" aria-label="${n} ${label}"><b>${n}</b><span>${label}</span></span>`).join("");
+    const isToday = ymd(attDate) === ymd(startOfToday());
+    $("todayDate").textContent = "";
 
     if (!todayScheds.length) {
-      const isToday = ymd(attDate) === ymd(startOfToday());
       $("todayList").innerHTML = `<div class="empty"><div class="big">🎵</div>${isToday ? "Hôm nay" : "Ngày này"} không có lớp nào.</div>`;
       return;
     }
@@ -502,26 +636,39 @@
     const allPresent = inClassCount > 0 && presentCount === inClassCount;
     const partial = tp === true && !allPresent;
     const tpToggle =
-      `<span class="tp-label">GV:</span><div class="tp-toggle" data-tp="${s.id}">` +
-      `<button class="yes ${tp === true ? "on" : ""}${partial ? " partial" : ""}" data-tpv="1">Có dạy</button>` +
-      `<button class="no ${tp === false ? "on" : ""}" data-tpv="0">Nghỉ</button></div>` +
+      `<span class="tp-label">Giáo viên:</span><div class="tp-toggle" data-tp="${s.id}">` +
+      `<button class="yes ${tp === true ? "on" : ""}" data-tpv="1" aria-pressed="${tp === true}">Dạy</button>` +
+      `<button class="no ${tp === false ? "on" : ""}" data-tpv="0" aria-pressed="${tp === false}">Nghỉ</button></div>` +
+      (tp == null ? '<span class="tp-unmarked">Chưa xác nhận</span>' : '') +
       (partial ? `<span class="tp-hint" title="Lớp không đủ học sinh – vẫn tính buổi dạy cho lương">${inClassCount ? presentCount + "/" + inClassCount + " có mặt" : "chưa có HS"}</span>` : "");
 
     const studRows = rows.length
       ? rows.map((a) => {
           const st = studentsById[a.student_id];
           const nm = st ? st.full_name : "(học sinh đã xóa)";
-          const sub = st ? esc(st.subject || "") : "";
+          // admin: buổi này là buổi số mấy của khóa nào (hoặc buổi lẻ)
+          let courseTag = "";
+          const bd = courseInfo[a.student_id];
+          if (bd) {
+            let hit = null;
+            bd.courses.forEach((x) => x.items.forEach((it) => { if (it.a.schedule_id === s.id) hit = { seq: x.c.seq, no: it.no, total: x.c.total_sessions }; }));
+            const ex = !hit && bd.extra.find((it) => it.a.schedule_id === s.id);
+            if (hit) courseTag = hit.no ? ` · Khóa ${hit.seq} · buổi ${hit.no}/${hit.total}` : ` · Khóa ${hit.seq} · không trừ buổi`;
+            else if (ex) courseTag = ' · <b class="extra-txt">Buổi lẻ — hết khóa</b>';
+          }
+          const sub = st ? esc(st.subject || "") + courseTag : "";
           const status = a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
             : a.present === false ? '<span class="att-status absent">✕ Vắng</span>'
             : '<span class="att-status none">• Chưa điểm danh</span>';
           // HS vắng -> hiện ô ghi lý do nghỉ (lưu lại để truy xuất trong PDF của HS)
+          // khóa tính "có mặt + vắng không phép" -> cho đánh dấu vắng CÓ PHÉP (không trừ buổi)
+          const excRow = studentRule(a.student_id) === "present_unexcused"
+            ? `<label class="att-exc"><input type="checkbox" data-attexc="${s.id}|${a.student_id}" ${a.excused ? "checked" : ""}/> Có phép — không trừ buổi</label>` : "";
           const noteRow = a.present === false
-            ? `<div class="att-note-row"><input class="att-note-input" type="text" maxlength="200" data-attnote="${s.id}|${a.student_id}" value="${esc(a.note || "")}" placeholder="Lý do nghỉ (VD: ốm, bận, xin phép…) — lưu vào PDF của học sinh"></div>`
+            ? `<div class="att-note-row"><input class="att-note-input" type="text" maxlength="200" data-attnote="${s.id}|${a.student_id}" value="${esc(a.note || "")}" placeholder="Lý do nghỉ (VD: ốm, bận, xin phép…) — lưu vào PDF của học sinh">${excRow}</div>`
             : "";
           return `<div class="att-item"><div class="att-row">` +
-            `<div class="att-name"><div class="n">${esc(nm)}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
-            status +
+            `<div class="att-name"><div class="att-name-top"><span class="n">${esc(nm)}</span>${status}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
             `<div class="att-actions">` +
             `<button class="att-btn yes ${a.present === true ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt">✓</button>` +
             `<button class="att-btn no ${a.present === false ? "on" : ""}" data-att="${s.id}|${a.student_id}|0" title="Vắng">✕</button>` +
@@ -533,21 +680,59 @@
     // học sinh có thể thêm vào lớp
     const inClass = new Set(rows.map((a) => a.student_id));
     const addable = students.filter((st) => !inClass.has(st.id));
-    const addRow = `<div class="cc-foot"><div class="add-stud-row">` +
-      `<select data-addsel="${s.id}"><option value="">+ Thêm học sinh vào lớp…</option>` +
-      addable.map((st) => `<option value="${st.id}">${esc(st.full_name)}${st.subject ? " · " + esc(st.subject) : ""}</option>`).join("") +
-      `</select></div></div>`;
+    const addRow = `<div class="cc-foot"><details class="student-picker"><summary>+ Thêm học sinh <span aria-hidden="true">⌄</span></summary><div class="student-picker-panel">` +
+      `<input type="search" class="student-picker-search" data-studentquery="${s.id}" placeholder="Tìm tên, môn học hoặc số điện thoại…" aria-label="Tìm học sinh để thêm vào lớp" autocomplete="off" />` +
+      `<div class="student-picker-results">${addable.map(st => `<button type="button" data-addstudent="${s.id}|${st.id}" data-studentmatch="${esc(norm(st.full_name + ' ' + (st.subject || '') + ' ' + (st.phone || '')))}"><span>${esc(st.full_name)}</span><small>${esc(st.subject || '')}</small><span aria-hidden="true">+</span></button>`).join('')}</div><p class="student-picker-empty" ${addable.length?'hidden':''}>Không có học sinh phù hợp.</p></div></details></div>`;
 
-    return `<div class="class-card ${isPast ? "is-past" : ""} ${locked ? "locked" : ""}">` +
-      `<div class="cc-head">` +
-        `<span class="cc-time">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>` +
-        `<div class="cc-info"><div class="cc-subj">${esc(s.subject)}</div>` +
-        `<div class="cc-meta">${[teacherDisplay(s), lessonTypeLabel(s.lesson_type), s.class_name ? "Lớp " + esc(s.class_name) : "", s.room ? "📍 " + esc(s.room) : ""].filter(Boolean).join(" · ")}</div></div>` +
+    // Đầu thẻ kiểu Liquid Glass: môn · loại lớp / tên học sinh / GV · lớp · phòng / trạng thái + thời lượng
+    const names = rows.map((a) => studentsById[a.student_id] ? studentsById[a.student_id].full_name : "").filter(Boolean);
+    const title = names.length ? (names.length > 3 ? names.slice(0, 3).join(" · ") + ` +${names.length - 3}` : names.join(" · "))
+      : (s.class_name ? "Lớp " + s.class_name : s.subject);
+    const marked = rows.filter((a) => a.present === true || a.present === false).length;
+    const badge = !rows.length ? ""
+      : marked === rows.length ? `<span class="cc-badge done">${CHECK_ICON} Đã điểm danh</span>`
+      : `<span class="cc-badge pending" aria-label="Chưa điểm danh đầy đủ: ${marked}/${rows.length}">Chưa ĐD ${marked}/${rows.length}</span>`;
+    const [sh, sm] = hhmm(s.start_time).split(":").map(Number), [eh, em] = hhmm(s.end_time).split(":").map(Number);
+    const dur = (eh * 60 + em) - (sh * 60 + sm);
+    const meta = [teacherDisplay(s), s.class_name && names.length ? "Lớp " + s.class_name : "", s.room || ""].filter(Boolean).map(esc).join(" · ");
+
+    return `<div class="lesson">` +
+      `<div class="class-card ${isPast ? "is-past" : ""} ${locked ? "locked" : ""}">` +
+        `<div class="cc-head">` +
+          `<div class="cc-time-inline"><b>${hhmm(s.start_time)} – ${hhmm(s.end_time)}</b>${dur > 0 ? `<span>${dur} phút</span>` : ''}</div>` +
+          `<div class="cc-eyebrow">${esc(s.subject)} · ${lessonTypeLabel(s.lesson_type)}</div>` +
+          `<div class="cc-title-row"><div class="cc-title">${esc(title)}</div>${badge}</div>` +
+          `<div class="cc-meta">${meta}</div>` +
+        `</div>` +
+        `<div class="cc-body">${studRows}</div>` +
         `<div class="cc-tpresent">${tpToggle}</div>` +
+        addRow +
       `</div>` +
-      `<div class="cc-body">${studRows}</div>` +
-      addRow +
     `</div>`;
+  }
+
+  // các <option> học sinh có thể thêm vào lớp (lọc theo ô tìm; iOS không ẩn được option nên dựng lại)
+  function addOptions(addable, q) {
+    const qq = norm(q);
+    const list = qq ? addable.filter((st) => norm(st.full_name + " " + (st.subject || "") + " " + (st.phone || "")).includes(qq)) : addable;
+    const head = qq ? `${list.length ? "+ Chọn trong " + list.length + " kết quả…" : "Không có HS phù hợp"}` : "+ Thêm học sinh vào lớp…";
+    return `<option value="">${head}</option>` +
+      list.map((st) => `<option value="${st.id}">${esc(st.full_name)}${st.subject ? " · " + esc(st.subject) : ""}</option>`).join("");
+  }
+  function filterAddSelect(scheduleId, q) {
+    const inClass = new Set(attFor(scheduleId).map((a) => a.student_id));
+    const sel = document.querySelector(`[data-addsel="${scheduleId}"]`); if (!sel) return;
+    sel.innerHTML = addOptions(students.filter((st) => !inClass.has(st.id)), q);
+  }
+  async function markExcused(scheduleId, studentId, excused) {
+    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
+    const { error } = await B.setAttendanceExcused(scheduleId, studentId, excused, user.id);
+    if (error) return toast("Lỗi lưu: " + error.message + (/excused/.test(error.message) ? " — cần chạy supabase-migration-6.sql" : ""), "err");
+    const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
+    if (cur) cur.excused = excused;
+    patchAttCache(scheduleId, studentId, { excused });
+    renderToday();
+    toast(excused ? "Đã đánh dấu vắng có phép (không trừ buổi)." : "Đã bỏ có phép — buổi vắng này sẽ bị trừ.", "ok");
   }
 
   async function markStudent(scheduleId, studentId, present) {
@@ -559,6 +744,7 @@
     if (error) return toast("Lỗi điểm danh: " + error.message, "err");
     if (cur) cur.present = newVal;
     else todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: newVal });
+    patchAttCache(scheduleId, studentId, { present: newVal });
     renderToday();
   }
   // Lưu ghi chú lý do nghỉ của HS (gọi khi rời ô nhập). Không re-render để không mất con trỏ.
@@ -588,6 +774,7 @@
     const { error } = await B.setAttendance(scheduleId, studentId, null, user.id);
     if (error) return toast("Lỗi: " + error.message, "err");
     todayAtt.push({ schedule_id: scheduleId, student_id: studentId, present: null });
+    patchAttCache(scheduleId, studentId, { present: null });
     renderToday();
     toast("Đã thêm học sinh vào lớp.", "ok");
   }
@@ -596,13 +783,14 @@
     const { error } = await B.removeAttendance(scheduleId, studentId);
     if (error) return toast("Lỗi: " + error.message, "err");
     todayAtt = todayAtt.filter((a) => !(a.schedule_id === scheduleId && a.student_id === studentId));
+    patchAttCache(scheduleId, studentId, null);
     renderToday();
   }
 
   // =====================================================================
   //  THỜI KHÓA BIỂU (tuần)
   // =====================================================================
-  let allForWeek = [], attByWeek = {}, weekStudNames = {};
+  let allForWeek = [], attByWeek = {}, weekStudNames = {}, weekAbsentNames = {};
 
   function fillTeacherFilter() {
     const sel = $("teacherFilter"); if (!sel) return;
@@ -617,9 +805,11 @@
   function setViewDate(d) {
     viewDate = new Date(d); viewDate.setHours(0, 0, 0, 0);
     const ws = startOfWeek(viewDate), we = addDays(ws, 6);
-    $("navRange").textContent = `${dmy(ws)} – ${dmy(we)}`;
-    $("navMonth").textContent = `Tháng ${we.getMonth() + 1}, ${we.getFullYear()}`;
+    $("navRange").textContent = `${dmy(ws).slice(0, 5)} – ${dmy(we).slice(0, 5)}`;
+    $("navRange").setAttribute("aria-label", `Tuần từ ${dmy(ws)} đến ${dmy(we)}`);
+    $("navMonth").textContent = `Tháng ${ws.getMonth() + 1}, ${ws.getFullYear()}`;
     $("datePicker").value = dmy(viewDate);
+    renderScheduleDays();
     loadWeek();
   }
   function navigate(kind, delta) {
@@ -630,27 +820,44 @@
   }
 
   async function loadWeek() {
+    const request = ++weekRequest;
     $("tkbWrap").classList.add("loading"); $("loading").classList.remove("hidden");
     const ws = startOfWeek(viewDate), we = addDays(ws, 6);
     const tf = scheduleTeacherFilter();
     if (tf === "__none__") { allForWeek = []; attByWeek = {}; $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading"); renderWeek(); return; }
     const { data, error } = await B.listSchedules({ from: ymd(ws), to: ymd(we), teacherId: tf });
+    if (request !== weekRequest) return;
     allForWeek = error ? [] : (data || []);
     const ids = allForWeek.map((s) => s.id);
-    const { data: atts } = await B.listAttendanceBySchedules(ids);
-    attByWeek = {}; weekStudNames = {};
+    const { data: atts, error: attError } = await B.listAttendanceBySchedules(ids);
+    if (request !== weekRequest) return;
+    if (attError) { $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading"); $("weekList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
+    attByWeek = {}; weekStudNames = {}; weekAbsentNames = {};
     (atts || []).forEach((a) => {
       const m = attByWeek[a.schedule_id] || (attByWeek[a.schedule_id] = { total: 0, present: 0, absent: 0, none: 0 });
       m.total++; if (a.present === true) m.present++; else if (a.present === false) m.absent++; else m.none++;
       const nm = studentsById[a.student_id] && studentsById[a.student_id].full_name;
       if (nm) (weekStudNames[a.schedule_id] = weekStudNames[a.schedule_id] || []).push(nm);
+      if (a.present === false) (weekAbsentNames[a.schedule_id] = weekAbsentNames[a.schedule_id] || []).push(nm || "Học sinh đã xóa");
     });
     $("loading").classList.add("hidden"); $("tkbWrap").classList.remove("loading");
     if (error) toast("Lỗi tải lịch: " + error.message, "err");
     renderWeek();
   }
 
+  function renderScheduleDays() {
+    const ws = startOfWeek(viewDate), selected = ymd(viewDate), today = ymd(startOfToday());
+    $("scheduleDays").innerHTML = Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(ws, i), date = ymd(d), active = date === selected;
+      const hasLessons = allForWeek.some((s) => s.schedule_date === date);
+      return `<button type="button" class="schedule-day${active ? " active" : ""}${date === today ? " is-today" : ""}" data-schedule-date="${date}" aria-pressed="${active}" aria-label="Xem lịch ${DOW[d.getDay()]}, ${dmy(d)}">` +
+        `<span class="schedule-weekday">${["T2", "T3", "T4", "T5", "T6", "T7", "CN"][i]}</span><strong>${d.getDate()}</strong>` +
+        `<span class="schedule-day-dot${hasLessons ? "" : " none"}" aria-hidden="true"></span></button>`;
+    }).join("");
+  }
+
   function renderWeek() {
+    renderScheduleDays();
     const ws = startOfWeek(viewDate);
     const days = []; for (let i = 0; i < 7; i++) days.push(addDays(ws, i));
     const todayY = ymd(startOfToday());
@@ -664,7 +871,8 @@
     const m = attByWeek[s.id];
     if (!m || !m.total) return "";
     const done = m.none === 0;
-    return `<div class="m">${done ? "✅" : "📝"} Điểm danh ${m.present}/${m.total}${m.absent ? " · vắng " + m.absent : ""}</div>`;
+    return `<div class="schedule-attendance"><span class="schedule-att-label">${done ? "Đã điểm danh" : "Đang điểm danh"}</span><b>${m.present}/${m.total} có mặt</b>` +
+      (m.absent ? `<span class="schedule-absent">Vắng: ${esc((weekAbsentNames[s.id] || []).join(", ")) || m.absent + " học sinh"}</span>` : "") + `</div>`;
   }
 
   function miniCard(s, compact) {
@@ -676,15 +884,14 @@
       : "";
     const m = attByWeek[s.id];
     const done = m && m.total && m.none === 0;
-    const metaLines = compact
-      ? `<div class="m">${esc(name)}${s.class_name ? " · Lớp " + esc(s.class_name) : ""}</div>` + (s.room ? `<div class="m">📍 ${esc(s.room)}</div>` : "")
-      : `<div class="m">${["GV: " + esc(name), s.class_name ? "Lớp " + esc(s.class_name) : "", s.room ? "📍 " + esc(s.room) : ""].filter(Boolean).join(" · ")}</div>`;
-    return `<div class="mini ${done ? "att-done" : ""}">` +
-      `<div class="t">${hhmm(s.start_time)}–${hhmm(s.end_time)}</div>` +
-      `<div class="s">${esc(classTitle(s, weekStudNames[s.id]))}</div>` +
-      metaLines + attSummary(s) +
-      (s.note ? `<div class="m">📝 ${esc(s.note)}</div>` : "") +
-      act + `</div>`;
+    const names = (weekStudNames[s.id] || []).join(", ");
+    return `<div class="mini ${done ? "att-done" : ""}${compact ? " mini-compact" : ""}">` +
+      `<div class="mini-top"><div class="t">${hhmm(s.start_time)} – ${hhmm(s.end_time)}</div>${act}</div>` +
+      `<div class="mini-layout"><div class="mini-main"><div class="s">${esc(s.subject)} <span class="mini-type">${esc(lessonTypeLabel(s.lesson_type))}</span></div>` +
+      `<div class="mini-students">${esc(names || s.class_name || "Chưa có học sinh")}</div>` +
+      `<div class="mini-teacher"><span>Giáo viên</span><strong>${esc(name)}</strong></div></div>` +
+      `<div class="mini-side">${s.class_name ? `<span class="mini-detail">Lớp <b>${esc(s.class_name)}</b></span>` : ""}${s.room ? `<span class="mini-detail">Phòng <b>${esc(s.room)}</b></span>` : ""}</div></div>` +
+      attSummary(s) + (s.note ? `<div class="mini-note">${esc(s.note)}</div>` : "") + `</div>`;
   }
 
   function renderWeekGrid(days, map, todayY) {
@@ -712,11 +919,11 @@
     days.forEach((d) => {
       const dy = ymd(d), t = dy === todayY ? " today" : "";
       const dayBuois = BUOI.filter((b) => map[dy][b.key].length);
-      h += `<div class="day-block"><div class="dhead${t}"><span class="dname">${DOW[d.getDay()]} · ${dmy(d)}</span>` +
+      h += `<div class="day-block" data-schedule-block="${dy}"><div class="dhead${t}"><div class="day-heading"><span class="dname">${DOW[d.getDay()]} — ${dmy(d)}</span><div class="day-periods">${dayBuois.map(b => `<span class="buoi-pill ${b.key}">${b.icon} ${b.label}</span>`).join('')}</div></div>` +
         (admin ? `<button class="dadd" data-add="${dy}|chieu">+ Thêm</button>` : "") + `</div><div class="dbody">`;
       if (!dayBuois.length) h += `<div class="day-empty">Chưa có lịch.</div>`;
       else dayBuois.forEach((b) => {
-        h += `<div class="buoi-row"><span class="buoi-pill ${b.key}">${b.icon} ${b.label}</span><div class="buoi-items">` +
+        h += `<div class="buoi-row"><div class="buoi-items">` +
           map[dy][b.key].map((s) => miniCard(s, false)).join("") + `</div></div>`;
       });
       h += `</div></div>`;
@@ -768,8 +975,9 @@
       (data || []).forEach((a) => checkedIds.add(a.student_id));
     }
     $("fStudents").innerHTML = students.length
-      ? students.map((st) => `<label class="chk-item"><input type="checkbox" data-sid="${st.id}" ${checkedIds.has(st.id) ? "checked" : ""}/> ${esc(st.full_name)}<span class="ci-sub">${esc(st.subject || "")}</span></label>`).join("")
+      ? students.map((st) => `<label class="chk-item" data-q="${esc(norm(st.full_name + " " + (st.subject || "") + " " + (st.phone || "")))}"><input type="checkbox" data-sid="${st.id}" ${checkedIds.has(st.id) ? "checked" : ""}/> ${esc(st.full_name)}<span class="ci-sub">${esc(st.subject || "")}</span></label>`).join("")
       : '<div class="chk-empty">Chưa có học sinh — thêm ở mục “Học sinh”.</div>';
+    $("fStudentSearch").value = "";
 
     // reset áp dụng cho các tuần sau
     $("fRepeat").checked = false;
@@ -814,13 +1022,18 @@
         schedId = data && data.id;
       }
       // đồng bộ học sinh trong lớp
-      const { data: existing } = await B.listAttendanceBySchedules([schedId]);
+      if (!schedId) throw new Error("Không nhận được mã buổi học.");
+      $("schedId").value = schedId; // Giữ mã khi thử lại sau lỗi đồng bộ, tránh tạo trùng buổi.
+      const { data: existing, error: syncReadError } = await B.listAttendanceBySchedules([schedId]);
+      if (syncReadError) throw syncReadError;
       const existingIds = new Set((existing || []).map((a) => a.student_id));
       const checkedSet = new Set(checked);
       const ops = [];
       checked.forEach((sid) => { if (!existingIds.has(sid)) ops.push(B.setAttendance(schedId, sid, null, user.id)); });
       existingIds.forEach((sid) => { if (!checkedSet.has(sid)) ops.push(B.removeAttendance(schedId, sid)); });
-      await Promise.all(ops);
+      const syncResults = await Promise.all(ops);
+      const syncFailure = syncResults.find(r => r && r.error);
+      if (syncFailure) throw new Error("Buổi học đã lưu, nhưng đồng bộ học sinh thất bại: " + syncFailure.error.message);
 
       let repInfo = "";
       if ($("fRepeat").checked && modalApplyWeeks.length) {
@@ -893,15 +1106,18 @@
   async function applyWeekToWeeks(srcWeekStart, targetWeekStarts, copyStudents) {
     toast("Đang áp dụng lịch…");
     const ws = srcWeekStart, we = addDays(ws, 6);
-    const { data: src } = await B.listSchedules({ from: ymd(ws), to: ymd(we), teacherId: null });
+    const { data: src, error: sourceError } = await B.listSchedules({ from: ymd(ws), to: ymd(we), teacherId: null });
+    if (sourceError) return toast("Không thể tải tuần nguồn: " + sourceError.message, "err");
     if (!src || !src.length) return toast("Tuần nguồn chưa có lịch để áp dụng.", "err");
     let srcStudents = {};
     if (copyStudents) {
-      const { data: atts } = await B.listAttendanceBySchedules(src.map((s) => s.id));
+      const { data: atts, error: attError } = await B.listAttendanceBySchedules(src.map((s) => s.id));
+      if (attError) return toast("Không thể tải học sinh: " + attError.message, "err");
       (atts || []).forEach((a) => { (srcStudents[a.schedule_id] = srcStudents[a.schedule_id] || []).push(a.student_id); });
     }
     const sorted = targetWeekStarts.slice().sort();
-    const { data: existing } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: null });
+    const { data: existing, error: existingError } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: null });
+    if (existingError) return toast("Không thể kiểm tra lịch hiện có: " + existingError.message, "err");
     const exKey = new Set((existing || []).map((s) => s.schedule_date + "|" + s.start_time + "|" + s.teacher_id));
     const newRows = [], srcOf = [];
     targetWeekStarts.forEach((twY) => {
@@ -922,7 +1138,7 @@
       const insMap = {}; (inserted || []).forEach((r) => { insMap[r.schedule_date + "|" + r.start_time + "|" + r.teacher_id] = r.id; });
       const attRows = [];
       newRows.forEach((nr, i) => { const id = insMap[nr.schedule_date + "|" + nr.start_time + "|" + nr.teacher_id], studs = srcStudents[srcOf[i]] || []; if (id) studs.forEach((sid) => attRows.push({ schedule_id: id, student_id: sid })); });
-      if (attRows.length) await B.addAttendanceBulk(attRows);
+      if (attRows.length) { const result = await B.addAttendanceBulk(attRows); if (result.error) return toast("Lịch đã thêm, nhưng học sinh chưa được sao chép: " + result.error.message, "err"); }
     }
     toast(`Đã áp dụng ${(inserted || []).length} buổi cho ${targetWeekStarts.length} tuần.`, "ok");
     if (currentView === "schedule") loadWeek();
@@ -932,7 +1148,8 @@
   async function replicateClassToWeeks(payload, studentIds, weekStarts, copyStudents) {
     const baseDate = parseYmd(payload.schedule_date), off = (baseDate.getDay() + 6) % 7;
     const sorted = weekStarts.slice().sort();
-    const { data: existing } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: payload.teacher_id });
+    const { data: existing, error: existingError } = await B.listSchedules({ from: sorted[0], to: ymd(addDays(parseYmd(sorted[sorted.length - 1]), 6)), teacherId: payload.teacher_id });
+    if (existingError) throw existingError;
     const exKey = new Set((existing || []).map((s) => s.schedule_date + "|" + s.start_time + "|" + s.teacher_id));
     const newRows = [];
     weekStarts.forEach((twY) => {
@@ -942,11 +1159,12 @@
       newRows.push({ teacher_id: payload.teacher_id, schedule_date: nd, subject: payload.subject, class_name: payload.class_name, start_time: payload.start_time, end_time: payload.end_time, room: payload.room, lesson_type: payload.lesson_type, teacher_name: payload.teacher_name, note: payload.note });
     });
     if (!newRows.length) return 0;
-    const { data: inserted } = await B.addSchedulesBulk(newRows);
+    const { data: inserted, error: insertError } = await B.addSchedulesBulk(newRows);
+    if (insertError) throw insertError;
     if (copyStudents && studentIds && studentIds.length) {
       const attRows = [];
       (inserted || []).forEach((r) => studentIds.forEach((sid) => attRows.push({ schedule_id: r.id, student_id: sid })));
-      if (attRows.length) await B.addAttendanceBulk(attRows);
+      if (attRows.length) { const result = await B.addAttendanceBulk(attRows); if (result.error) throw new Error("Lịch lặp đã thêm, nhưng sao chép học sinh thất bại: " + result.error.message); }
     }
     return (inserted || []).length;
   }
@@ -954,38 +1172,87 @@
   // =====================================================================
   //  HỌC SINH (admin)
   // =====================================================================
+  // Tiến độ KHÓA ĐANG HỌC (admin: chia theo khóa; giáo viên: đếm tổng như cũ)
+  //  -> { used, total, remaining, ratio, seq, courseCount, extra (số buổi lẻ), fee, done }
   function studentProgress(st) {
+    const bd = courseInfo[st.id];
+    if (bd) {
+      const cur = bd.courses[bd.cur];
+      const total = cur.c.total_sessions || 0, used = cur.used;
+      const remaining = Math.max(0, total - used);
+      return { used, total, remaining, ratio: total ? Math.min(1, used / total) : 0, seq: cur.c.seq || bd.cur + 1, courseCount: bd.courses.length,
+        extra: bd.extraUsed, fee: Number(cur.c.tuition_per_session) || 0, done: !!total && remaining === 0 };
+    }
     const used = presentByStudent[st.id] || 0;
     const total = st.total_sessions || 0;
     const remaining = Math.max(0, total - used);
-    return { used, total, remaining, ratio: total ? Math.min(1, used / total) : 0 };
+    return { used, total, remaining, ratio: total ? Math.min(1, used / total) : 0, seq: 1, courseCount: 1, extra: 0, fee: Number(st.tuition_per_session) || 0, done: !!total && remaining === 0 };
+  }
+  // Tổng học phí phát sinh theo buổi đã trừ: Σ (buổi đã học của từng khóa × HP khóa) + buổi lẻ × HP/buổi của HS
+  function earnedTuition(st) {
+    const bd = courseInfo[st.id];
+    if (!bd) return studentProgress(st).used * (st.tuition_per_session || 0);
+    return bd.courses.reduce((s, x) => s + x.used * (Number(x.c.tuition_per_session) || 0), 0) + bd.extraUsed * (Number(st.tuition_per_session) || 0);
   }
 
+  // Tổng học phí PHẢI ĐÓNG tới hiện tại: mọi khóa (trọn khóa) + buổi lẻ — để so với tổng tiền đã đóng
+  function billedTuition(st) {
+    const bd = courseInfo[st.id];
+    if (!bd) return (st.total_sessions || 0) * (st.tuition_per_session || 0);
+    return bd.courses.reduce((s, x) => s + (x.c.total_sessions || 0) * (Number(x.c.tuition_per_session) || 0), 0) + bd.extraUsed * (Number(st.tuition_per_session) || 0);
+  }
+
+  function renderPageSearch() {
+    const teacherMode = currentView === 'teachers';
+    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : 'studentSearch';
+    const query = norm($("pageSearchInput").value);
+    $(sourceId).value = $("pageSearchInput").value;
+    if (teacherMode) renderTeachers(); else if (currentView === 'tuition') renderTuition(); else renderStudents();
+    const records = teacherMode ? teachers : students;
+    const matches = records.filter(r => norm([r.full_name,r.phone,r.guardian,r.subject,r.specialty,(teachersById[r.teacher_id] || {}).full_name,(profilesById[r.user_id] || {}).email].filter(Boolean).join(' ')).includes(query));
+    $("pageSearchResults").innerHTML = matches.length ? matches.slice(0,12).map(r => `<button type="button" data-search-name="${esc(r.full_name)}"><strong>${esc(r.full_name)}</strong><span>${esc(r.specialty || r.subject || '')}</span></button>`).join('') : '<p>Không có kết quả phù hợp.</p>';
+    $("pageSearchDone").textContent = `Xem ${matches.length} kết quả`;
+  }
+  function openPageSearch() {
+    const teacherMode = currentView === 'teachers';
+    const sourceId = teacherMode ? 'teacherSearch' : currentView === 'tuition' ? 'tuitionSearch' : 'studentSearch';
+    $("pageSearchTitle").textContent = teacherMode ? 'Tìm giáo viên' : currentView === 'tuition' ? 'Tìm học phí' : 'Tìm học sinh';
+    $("pageSearchInput").placeholder = teacherMode ? 'Tìm tên, chuyên môn, email…' : 'Tìm tên, số điện thoại, phụ huynh…';
+    $("pageSearchInput").value = $(sourceId).value;
+    renderPageSearch(); $("pageSearchDialog").showModal(); $("pageSearchInput").focus();
+  }
   function renderStudents() {
-    const q = ($("studentSearch").value || "").trim().toLowerCase();
-    const list = students.filter((s) => !q || (s.full_name || "").toLowerCase().includes(q) || (s.subject || "").toLowerCase().includes(q) || (s.phone || "").includes(q));
-    if (!list.length) { $("studentList").innerHTML = '<div class="empty"><div class="big">🎓</div>Chưa có học sinh nào.</div>'; return; }
+    const q = norm($("studentSearch").value);
+    // tìm theo tên, môn, SĐT, phụ huynh, giáo viên (không cần gõ dấu)
+    const list = students.filter((s) => !q || [s.full_name, s.subject, s.phone, s.guardian, teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name, s.note]
+      .some((v) => norm(v).includes(q)));
+    $("studentCount").textContent = q ? `${list.length}/${students.length} học sinh` : `${students.length} học sinh`;
+    if (!list.length) { $("studentList").innerHTML = `<div class="empty"><div class="big">🎓</div>${q ? "Không tìm thấy học sinh phù hợp." : "Chưa có học sinh nào."}</div>`; return; }
     $("studentList").innerHTML = list.map((s) => {
       const p = studentProgress(s);
       const paid = paidByStudent[s.id] || { amount: 0, sessions: 0 };
-      const courseTotal = (s.total_sessions || 0) * (s.tuition_per_session || 0);
-      const owed = Math.max(0, courseTotal - paid.amount);
-      const tag = s.status === "completed" || p.remaining === 0 && p.total ? '<span class="tag-done">Đã kết thúc</span>'
-        : (p.remaining <= 2 && p.total ? '<span class="tag-near">Sắp kết thúc</span>' : "");
-      const pcls = (p.remaining === 0 && p.total) ? "done" : (p.remaining <= 2 && p.total ? "near" : "");
+      const owed = Math.max(0, billedTuition(s) - paid.amount);
+      const tag = p.done ? `<span class="tag-done">Hết khóa ${p.seq}</span>` + (p.extra ? ` <span class="tag-extra">${p.extra} buổi lẻ</span>` : "")
+        : s.status === "completed" ? '<span class="tag-done">Đã kết thúc</span>'
+        : (p.remaining <= 2 && p.total ? '<span class="tag-near">Sắp hết khóa</span>' : "");
+      const pcls = p.done ? "done" : (p.remaining <= 2 && p.total ? "near" : "");
       return `<div class="info-card">` +
         `<div class="ic-head"><div class="ic-avatar">${esc(initials(s.full_name))}</div>` +
         `<div class="ic-title"><div class="nm">${esc(s.full_name)} ${tag}</div><div class="sb">${esc(s.subject || "—")} · ${lessonTypeLabel(s.lesson_type)} · ${esc((teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name) || "Chưa gắn GV")}</div></div>` +
         `<span class="status-pill ${s.status}">${statusLabel(s.status)}</span></div>` +
         `<div class="ic-rows">` +
+          row("Khóa đang học", `Khóa ${p.seq}${p.courseCount > 1 ? ` / ${p.courseCount} khóa` : ""}`) +
           row("Buổi đã học", `${p.used}/${p.total} buổi`) +
           row("Còn lại", `${p.remaining} buổi`) +
-          row("Học phí/buổi", money(s.tuition_per_session)) +
+          (p.extra ? row("Buổi lẻ (ngoài khóa)", `<span style="color:var(--bad)">${p.extra} buổi</span>`) : "") +
+          row("Học phí/buổi", money(p.fee)) +
           row("Đã đóng", money(paid.amount) + (paid.sessions ? ` · ${paid.sessions} buổi` : "")) +
           (owed > 0 ? row("Còn thiếu", `<span style="color:var(--bad)">${money(owed)}</span>`) : row("Học phí", '<span style="color:var(--good)">Đã đóng đủ</span>')) +
         `</div>` +
         `<div class="progress ${pcls}"><span style="width:${Math.round(p.ratio * 100)}%"></span></div>` +
-        `<div class="ic-acts"><button class="btn btn-sm" data-stpdf="${s.id}">🖨 Lịch học</button>` +
+        (p.done ? `<button class="btn primary course-cta" data-stnewcourse="${s.id}">＋ Mở khóa mới${p.extra ? ` (chuyển ${p.extra} buổi lẻ sang)` : ""}</button>` : "") +
+        `<div class="ic-acts"><button class="btn btn-sm" data-stcourse="${s.id}">📚 Khóa học</button>` +
+        `<button class="btn btn-sm" data-stpdf="${s.id}">🖨 Lịch học</button>` +
         `<button class="btn btn-sm" data-stpay="${s.id}">💳 Học phí</button>` +
         `<button class="btn btn-sm" data-stedit="${s.id}">${ICON_EDIT} Sửa</button>` +
         `<button class="btn btn-sm danger" data-stdel="${s.id}">${ICON_DEL} Xóa</button></div>` +
@@ -1034,6 +1301,12 @@
     try {
       const { error } = id ? await B.updateStudent(id, payload) : await B.addStudent(payload);
       if (error) throw error;
+      // HS đã có nhiều khóa: số buổi / học phí / ngày bắt đầu trong form = của KHÓA MỚI NHẤT
+      const cl = id && coursesByStudent[id];
+      if (cl && cl.length) {
+        const r = await B.updateCourse(cl[cl.length - 1].id, { total_sessions: payload.total_sessions, tuition_per_session: payload.tuition_per_session, start_date: payload.start_date, lesson_type: payload.lesson_type });
+        if (r && r.error) throw r.error;
+      }
       closeStudentModal();
       toast(id ? "Đã cập nhật học sinh." : "Đã thêm học sinh.", "ok");
       await loadGlobals();
@@ -1051,6 +1324,193 @@
   }
 
   // =====================================================================
+  //  KHÓA HỌC (admin) — danh sách khóa + mở / sửa / xóa khóa
+  // =====================================================================
+  function fillRuleSelect(sel, val, withDefault) {
+    sel.innerHTML = (withDefault ? `<option value="">Theo Cài đặt (${countRuleLabel(defaultCountRule()).toLowerCase()})</option>` : "") +
+      COUNT_RULES.map((r) => `<option value="${r.key}">${r.label}</option>`).join("");
+    sel.value = val || "";
+  }
+  function openCourseModal(studentId, editCourseIdx) {
+    const st = studentsById[studentId]; if (!st) return;
+    $("cmStudentId").value = studentId;
+    $("cmTitle").textContent = st.full_name;
+    renderCourseList(st);
+    fillCourseForm(st, editCourseIdx);
+    $("courseModal").classList.remove("hidden");
+  }
+  function closeCourseModal() { $("courseModal").classList.add("hidden"); }
+  function renderCourseList(st) {
+    const bd = courseInfo[st.id] || courseBreakdown(st, []);
+    const span = (items) => {
+      const ds = items.map((it) => it.a.schedule_date).filter(Boolean);
+      return ds.length ? `${ymdToDmy(ds[0])} → ${ymdToDmy(ds[ds.length - 1])}` : "chưa có buổi";
+    };
+    const html = bd.courses.map((x, idx) => {
+      const total = x.c.total_sessions || 0, done = total && x.used >= total, isCur = idx === bd.cur;
+      const status = done ? '<span class="tag-done">Đã xong</span>' : isCur ? '<span class="status-pill active">Đang học</span>' : '<span class="tag-near">Chưa bắt đầu</span>';
+      return `<div class="course-item${isCur ? " current" : ""}">` +
+        `<div class="ci-main"><div class="ci-name">Khóa ${x.c.seq || idx + 1} — ${total} buổi ${status}</div>` +
+        `<div class="course-facts"><div><span>Tiến độ</span><b>${x.used}/${total} buổi</b></div><div><span>Buổi học</span><b>${span(x.items)}</b></div>${x.c.start_date ? `<div><span>Bắt đầu khóa</span><b>${ymdToDmy(x.c.start_date)}</b></div>` : ''}` +
+        `<div><span>Học phí mỗi buổi</span><b>${money(x.c.tuition_per_session)}</b></div><div><span>Cách tính buổi</span><b>${countRuleLabel(ruleOf(x.c))}</b></div>${x.c.note ? `<div><span>Ghi chú</span><b>${esc(x.c.note)}</b></div>` : ''}</div></div>` +
+        `<div class="ci-acts"><button class="att-btn" data-cmedit="${idx}" title="Sửa khóa">${ICON_EDIT}</button>` +
+        (x.c.id && bd.courses.length > 1 ? `<button class="att-btn no" data-cmdel="${x.c.id}" title="Xóa khóa">${ICON_DEL}</button>` : "") + `</div>` +
+      `</div>`;
+    }).join("") +
+    (bd.extra.length ? `<div class="course-item extra"><div class="ci-main"><div class="ci-name">Buổi lẻ ngoài khóa · <span class="extra-txt">${bd.extraUsed} buổi</span></div>` +
+      `<div class="ci-sub">${span(bd.extra)} — mở khóa mới bắt đầu từ ${ymdToDmy(bd.extra[0].a.schedule_date)} để chuyển các buổi này sang khóa mới (đánh số lại từ 1).</div></div></div>` : "");
+    $("cmList").innerHTML = html;
+  }
+  // editIdx: số thứ tự khóa cần sửa; bỏ trống = form mở khóa mới
+  function fillCourseForm(st, editIdx) {
+    const bd = courseInfo[st.id] || courseBreakdown(st, []);
+    $("cmErr").classList.add("hidden");
+    const editing = editIdx != null ? bd.courses[editIdx] : null;
+    const last = bd.courses[bd.courses.length - 1].c;
+    const c = editing ? editing.c : null;
+    $("cmId").value = editing ? String(editIdx) : "";
+    $("cmFormTitle").textContent = editing ? `Sửa khóa ${c.seq || editIdx + 1}` : `Mở khóa mới (khóa ${bd.courses.length + 1})`;
+    $("cmSave").textContent = editing ? "Lưu khóa" : "Mở khóa mới";
+    setCmTotal(c ? c.total_sessions : (last.total_sessions || 12));
+    setMoneyInput('cmFee', c ? (c.tuition_per_session || 0) : (last.tuition_per_session ?? defaultTuition(st.lesson_type) ?? 0));
+    // khóa mới bắt đầu từ buổi lẻ đầu tiên (để chuyển buổi lẻ sang) hoặc hôm nay
+    $("cmStart").value = c ? ymdToDmy(c.start_date) : (bd.extra.length ? ymdToDmy(bd.extra[0].a.schedule_date) : dmy(startOfToday()));
+    fillRuleSelect($("cmRule"), c ? c.count_rule : "", true);
+    $("cmNote").value = c ? (c.note || "") : "";
+    const seq = c ? (c.seq || editIdx + 1) : ((last.seq || bd.courses.length) + 1);
+    const saved = settings[tuitionAdjustmentKey(st.id, seq)];
+    const validSaved = saved && Number(saved.net) === readMoneyInput('cmFee');
+    $("cmFeeMode").value = validSaved ? saved.mode : 'custom';
+    setMoneyInput('cmBaseFee', validSaved ? saved.base : (defaultTuition(st.lesson_type) || readMoneyInput('cmFee')));
+    $("cmDiscount").value = validSaved ? saved.percent : 0;
+    updateCourseFee();
+  }
+  function tuitionAdjustmentKey(studentId, seq) { return `tuition_adjustment_${studentId}_${seq}`; }
+  function readMoneyInput(id) {
+    const raw = $(id).value.replace(/\./g, '').trim();
+    return /^\d+$/.test(raw) ? Number(raw) : NaN;
+  }
+  function setMoneyInput(id, amount) {
+    const formatted = Number.isSafeInteger(Number(amount)) && Number(amount) >= 0 ? Number(amount).toLocaleString('vi-VN') : '';
+    if ($(id).value !== formatted) $(id).value = formatted;
+  }
+  function formatMoneyTyping(input) {
+    const leftDigits = input.value.slice(0, input.selectionStart || 0).replace(/\D/g, '').length;
+    const digits = input.value.replace(/\D/g, '').slice(0, 12);
+    input.value = digits ? Number(digits).toLocaleString('vi-VN') : '';
+    let caret = 0, seen = 0;
+    while (caret < input.value.length && seen < leftDigits) { if (/\d/.test(input.value[caret])) seen++; caret++; }
+    input.setSelectionRange(caret, caret);
+  }
+  function calculateTuition(base, percent) {
+    if (!Number.isFinite(base) || base < 0 || !Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Giá phải từ 0 đ; giảm giá từ 0 đến 100%.');
+    return Math.round(base * (100 - percent) / 100);
+  }
+  function courseFeeQuote() {
+    const mode = $("cmFeeMode").value;
+    const st = studentsById[$("cmStudentId").value];
+    const base = mode === 'default' ? defaultTuition(st && st.lesson_type) : readMoneyInput('cmBaseFee');
+    const percent = mode === 'percent' ? Number($("cmDiscount").value || NaN) : 0;
+    const net = mode === 'custom' ? calculateTuition(readMoneyInput('cmFee'), 0) : calculateTuition(base, percent);
+    return {mode,base:mode === 'custom' ? net : base,percent,net};
+  }
+  function updateCourseFee() {
+    const mode = $("cmFeeMode").value;
+    $("cmDiscountFields").hidden = mode !== 'percent';
+    $("cmBaseFee").disabled = mode !== 'percent';
+    $("cmDiscount").disabled = mode !== 'percent';
+    $("cmFee").readOnly = mode !== 'custom';
+    try {
+      const q = courseFeeQuote(); setMoneyInput('cmFee', q.net);
+      const count = Number($("cmTotal").value) || 0;
+      $("cmFeePreview").textContent = `${money(q.net)}/buổi — ${money(q.net * count)} cho ${count} buổi` + (mode === 'percent' ? ` (giảm ${q.percent}%)` : '');
+    } catch(e) { $("cmFeePreview").textContent = e.message; }
+  }
+  function setCmTotal(n) {
+    $("cmTotal").value = n || 12;
+    document.querySelectorAll("#cmTotalPick [data-total]").forEach((b) => b.classList.toggle("on", Number(b.getAttribute("data-total")) === Number($("cmTotal").value)));
+  }
+  // Ghi khóa "ảo" (lấy từ hồ sơ HS) thành khóa 1 trong DB trước khi thêm khóa thứ 2
+  async function materializeFirstCourse(st) {
+    // ngày bắt đầu khóa 1 = buổi học sớm nhất (hồ sơ cũ có thể ghi ngày muộn hơn buổi thật)
+    const dates = (attRowsByStudent[st.id] || []).map((a) => a.schedule_date).filter(Boolean).sort();
+    const start = [st.start_date, dates[0]].filter(Boolean).sort()[0] || null;
+    const r = await B.addCourse({ student_id: st.id, seq: 1, total_sessions: st.total_sessions || 12, tuition_per_session: st.tuition_per_session || 0, lesson_type: st.lesson_type, start_date: start, count_rule: null });
+    if (r.error) throw r.error;
+    return r.data;
+  }
+  async function saveCourse() {
+    const sid = $("cmStudentId").value, st = studentsById[sid]; if (!st) return;
+    const err = (m) => { const e = $("cmErr"); e.textContent = m; e.classList.remove("hidden"); };
+    const total = parseInt($("cmTotal").value, 10);
+    if (!total || total < 1) return err("Nhập số buổi của khóa.");
+    const startRaw = $("cmStart").value.trim(), start = startRaw ? dmyToYmd(startRaw) : null;
+    if (startRaw && !start) return err("Ngày bắt đầu không hợp lệ (dd/mm/yyyy).");
+    let adjustment;
+    try { adjustment = courseFeeQuote(); } catch(e) { return err(e.message); }
+    const data = { total_sessions: total, tuition_per_session: adjustment.net, start_date: start, count_rule: $("cmRule").value || null, note: $("cmNote").value.trim() || null };
+    const bd = courseInfo[sid] || courseBreakdown(st, []);
+    const editIdx = $("cmId").value === "" ? null : Number($("cmId").value);
+    const list = (coursesByStudent[sid] || []).slice();
+    const adjustmentSeq = editIdx != null ? (bd.courses[editIdx].c.seq || editIdx + 1) : ((bd.courses[bd.courses.length - 1].c.seq || bd.courses.length) + 1);
+    $("cmSave").disabled = true;
+    try {
+      let isLatest;
+      if (editIdx != null) {
+        const c = bd.courses[editIdx].c;
+        isLatest = editIdx === bd.courses.length - 1;
+        if (c.id) { const r = await B.updateCourse(c.id, data); if (r.error) throw r.error; }
+        else if (data.count_rule || data.note) {         // khóa "ảo" cần lưu thêm cách tính/ghi chú -> ghi thành khóa 1
+          const made = await materializeFirstCourse(st);
+          const r = await B.updateCourse(made.id, data); if (r.error) throw r.error;
+        }
+      } else {
+        // khóa mới không được "nuốt" hết khóa đang học: phải bắt đầu sau buổi đầu tiên của khóa cuối
+        const lastC = bd.courses[bd.courses.length - 1];
+        const firstDate = lastC.items.length ? lastC.items[0].a.schedule_date : null;
+        if (start && firstDate && start <= firstDate) throw new Error(`Ngày bắt đầu khóa mới phải sau buổi đầu tiên của khóa ${lastC.c.seq || bd.courses.length} (${ymdToDmy(firstDate)}).`);
+        if (!list.length) list.push(await materializeFirstCourse(st));
+        const prev = list[list.length - 1];
+        const r = await B.addCourse(Object.assign({ student_id: sid, seq: (prev.seq || list.length) + 1, lesson_type: st.lesson_type }, data));
+        if (r.error) throw r.error;
+        isLatest = true;
+      }
+      // hồ sơ HS luôn phản ánh khóa mới nhất (học phí, số buổi... dùng ở các màn khác)
+      if (isLatest) {
+        const r = await B.updateStudent(sid, { total_sessions: data.total_sessions, tuition_per_session: data.tuition_per_session, start_date: data.start_date || st.start_date || null, status: editIdx == null ? "active" : st.status });
+        if (r.error) throw r.error;
+      }
+      const savedAdjustment = await B.saveSetting(tuitionAdjustmentKey(sid, adjustmentSeq), adjustment);
+      if (savedAdjustment.error) toast("Đã lưu học phí áp dụng, nhưng chưa lưu được cách giảm giá: " + savedAdjustment.error.message, "err");
+      else toast(editIdx != null ? "Đã lưu khóa và học phí riêng." : "Đã mở khóa mới — buổi được đánh số lại từ 1.", "ok");
+      await loadGlobals();
+      renderCourseList(studentsById[sid]); fillCourseForm(studentsById[sid]);
+      if (currentView === "students") renderStudents();
+    } catch (e) {
+      err("Lưu thất bại: " + (e.message || e) + (/courses/.test(e.message || "") ? " — cần chạy supabase-migration-6.sql trên Supabase." : ""));
+    } finally { $("cmSave").disabled = false; }
+  }
+  async function deleteCourse(courseId) {
+    const sid = $("cmStudentId").value, st = studentsById[sid];
+    const list = coursesByStudent[sid] || [];
+    const c = list.find((x) => x.id === courseId); if (!c) return;
+    if (!confirm(`Xóa khóa ${c.seq}? Buổi học KHÔNG bị xóa — chỉ được chia lại vào các khóa còn lại.`)) return;
+    const { error } = await B.deleteCourse(courseId);
+    if (error) return toast("Xóa thất bại: " + error.message, "err");
+    const rest = list.filter((x) => x.id !== courseId);
+    // đánh số lại khóa 1, 2, 3… cho liền mạch
+    await Promise.all(rest.map((x, i) => x.seq !== i + 1 ? B.updateCourse(x.id, { seq: i + 1 }) : null));
+    if (rest.length && c === list[list.length - 1]) {   // xóa khóa mới nhất -> hồ sơ HS lấy lại khóa trước
+      const p = rest[rest.length - 1];
+      await B.updateStudent(sid, { total_sessions: p.total_sessions, tuition_per_session: p.tuition_per_session, start_date: p.start_date || st.start_date || null });
+    }
+    toast("Đã xóa khóa.", "ok");
+    await loadGlobals();
+    renderCourseList(studentsById[sid]); fillCourseForm(studentsById[sid]);
+    if (currentView === "students") renderStudents();
+  }
+
+  // =====================================================================
   //  HỌC PHÍ — ĐÓNG TIỀN (admin)
   // =====================================================================
   async function reloadPayments() {
@@ -1062,7 +1522,7 @@
   function openPaymentModal(studentId) {
     const st = studentsById[studentId]; if (!st) return;
     $("payStudentId").value = studentId;
-    $("payTitle").textContent = "Học phí — " + st.full_name;
+    $("payTitle").textContent = st.full_name;
     $("payErr").classList.add("hidden");
     const now = new Date();
     $("payDate").value = dmy(now);
@@ -1077,11 +1537,12 @@
   function closePaymentModal() { $("paymentModal").classList.add("hidden"); }
   function renderPaymentSummary(st) {
     const paid = paidByStudent[st.id] || { amount: 0, sessions: 0 };
-    const courseTotal = (st.total_sessions || 0) * (st.tuition_per_session || 0);
-    const owed = Math.max(0, courseTotal - paid.amount);
+    const p = studentProgress(st);
+    const billed = billedTuition(st);
+    const owed = Math.max(0, billed - paid.amount);
     $("paySummary").innerHTML =
-      chip(money(st.tuition_per_session), "HP/buổi", "") +
-      chip(money(courseTotal), "Cả khóa", "primary") +
+      chip(money(p.fee), "Học phí mỗi buổi", "") +
+      chip(money(billed), p.courseCount > 1 || p.extra ? `Tổng ${p.courseCount} khóa${p.extra ? " + lẻ" : ""}` : "Cả khóa", "primary") +
       chip(money(paid.amount), "Đã đóng", "good") +
       chip(money(owed), "Còn thiếu", owed > 0 ? "bad" : "good");
   }
@@ -1132,19 +1593,33 @@
     const { data: scheds } = await B.listSchedulesByIds(ids);
     const schById = {}; (scheds || []).forEach((s) => (schById[s.id] = s));
     const todayY = ymd(startOfToday());
-    const rows = (atts || []).map((a) => { const s = schById[a.schedule_id]; return s ? { s: s, a: a } : null; }).filter(Boolean)
-      .filter((x) => x.s.schedule_date <= todayY)
-      .sort((x, y) => (x.s.schedule_date + x.s.start_time).localeCompare(y.s.schedule_date + y.s.start_time));
+    // chia buổi vào từng khóa (tính trên mọi buổi kể cả tương lai để khớp màn hình), rồi chỉ in buổi đến hôm nay
+    const all = (atts || []).filter((a) => schById[a.schedule_id]).map((a) => {
+      const s = schById[a.schedule_id];
+      return { schedule_id: a.schedule_id, present: a.present, excused: !!a.excused, note: a.note, schedule_date: s.schedule_date, start_time: s.start_time, s };
+    });
+    const bd = courseBreakdown(st, all);
+    const past = (items) => items.filter((it) => it.a.schedule_date <= todayY);
     let present = 0, absent = 0, none = 0;
-    rows.forEach((x) => { if (x.a.present === true) present++; else if (x.a.present === false) absent++; else none++; });
-    const detailRows = rows.map((x, i) => {
-      const s = x.s, d = parseYmd(s.schedule_date);
-      const status = x.a.present === true ? "✓ Có mặt" : x.a.present === false ? "✕ Vắng" : "• Chưa điểm danh";
-      const noteCell = x.a.note ? esc(x.a.note) : (x.a.present === false ? "—" : "");
-      return `<tr><td class='num'>${i + 1}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td><td>${noteCell}</td></tr>`;
-    }).join("");
+    all.filter((a) => a.schedule_date <= todayY).forEach((a) => { if (a.present === true) present++; else if (a.present === false) absent++; else none++; });
+    const rowHtml = (it) => {
+      const s = it.a.s, d = parseYmd(s.schedule_date);
+      const status = it.a.present === true ? "✓ Có mặt" : it.a.present === false ? (it.a.excused ? "✕ Vắng (có phép)" : "✕ Vắng") : "• Chưa điểm danh";
+      const noteCell = it.a.note ? esc(it.a.note) : (it.a.present === false ? "—" : "");
+      return `<tr><td class='num'>${it.no || "–"}</td><td>${dmy(d)}</td><td>${DOW[d.getDay()]}</td><td>${hhmm(s.start_time)}–${hhmm(s.end_time)}</td><td>${esc(s.subject)}</td><td>${lessonTypeLabel(s.lesson_type)}</td><td>${esc(teacherDisplay(s))}</td><td>${status}</td><td>${noteCell}</td></tr>`;
+    };
+    let detailRows = "";
+    bd.courses.forEach((x, idx) => {
+      const items = past(x.items);
+      if (!items.length && idx !== bd.cur) return;
+      const total = x.c.total_sessions || 0, done = total && x.used >= total;
+      detailRows += `<tr class='grp'><td colspan='9'>KHÓA ${x.c.seq || idx + 1} · ${total} buổi · đã học ${x.used}/${total}${done ? " · ĐÃ HOÀN THÀNH" : idx === bd.cur ? " · ĐANG HỌC" : ""}${x.c.start_date ? " · bắt đầu " + ymdToDmy(x.c.start_date) : ""}</td></tr>` +
+        (items.length ? items.map(rowHtml).join("") : "<tr><td colspan='9' style='text-align:center;color:#888'>Chưa có buổi nào.</td></tr>");
+    });
+    const extraPast = past(bd.extra);
+    if (extraPast.length) detailRows += `<tr class='grp extra'><td colspan='9'>BUỔI LẺ (ngoài khóa) · ${bd.extraUsed} buổi</td></tr>` + extraPast.map(rowHtml).join("");
     const paid = paidByStudent[studentId] || { amount: 0, sessions: 0 };
-    const total = st.total_sessions || 0, remaining = Math.max(0, total - present);
+    const curC = bd.courses[bd.cur], total = curC.c.total_sessions || 0, remaining = Math.max(0, total - curC.used);
     const now = new Date();
     const logoUrl = new URL("logo-wordmark.png", location.href).href;
     const teacherName = (teachersById[st.teacher_id] && teachersById[st.teacher_id].full_name) || "—";
@@ -1159,6 +1634,7 @@
       ".sumline{margin:6px 0 12px;padding:10px 12px;background:#eef0fb;border:1px solid #c9c9e6;border-radius:8px;font-size:13px;font-weight:700;}" +
       "table{width:100%;border-collapse:collapse;margin-bottom:6px;}th,td{border:1px solid #bbb;padding:6px 8px;text-align:left;}" +
       "th{background:#eef0fb;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;}td.num,th.num{text-align:right;white-space:nowrap;}" +
+      "tr.grp td{background:#e3f1ec;color:#0b5a50;font-weight:800;font-size:11.5px;letter-spacing:.3px;}tr.grp.extra td{background:#fbe9ea;color:#a5303a;}" +
       ".sign-row{display:flex;justify-content:flex-end;margin-top:30px;text-align:center;font-size:12px;}.sign-row .col{width:46%;}" +
       ".sign-row .role{font-weight:700;}.sign-row .hint{font-size:10px;color:#888;font-style:italic;}.sign-row .space{height:56px;}" +
       "@page{size:A4;margin:14mm;}";
@@ -1169,10 +1645,11 @@
       "<div class='info'><div><span class='lbl'>Họ và tên học sinh:</span> <b>" + esc(st.full_name) + "</b></div>" +
       "<div><span class='lbl'>Môn / Loại lớp:</span> " + esc(st.subject || "—") + " · " + lessonTypeLabel(st.lesson_type) + "</div>" +
       "<div><span class='lbl'>Giáo viên phụ trách:</span> " + esc(teacherName) + "</div>" +
-      "<div><span class='lbl'>Khóa học:</span> " + total + " buổi" + (st.start_date ? " · bắt đầu " + ymdToDmy(st.start_date) : "") + "</div>" +
+      "<div><span class='lbl'>Khóa đang học:</span> Khóa " + (curC.c.seq || bd.cur + 1) + " · " + total + " buổi" + (curC.c.start_date ? " · bắt đầu " + ymdToDmy(curC.c.start_date) : "") + (bd.courses.length > 1 ? " · đã học " + bd.courses.length + " khóa" : "") + "</div>" +
       "<div><span class='lbl'>Học phí đã đóng:</span> " + money(paid.amount) + (paid.sessions ? " · " + paid.sessions + " buổi" : "") + "</div></div>" +
-      "<div class='sumline'>Đã học: " + present + " buổi · Vắng: " + absent + " · Chưa điểm danh: " + none + " · Còn lại: " + remaining + "/" + total + " buổi</div>" +
-      "<table><thead><tr><th class='num'>STT</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>" +
+      "<div class='sumline'>Khóa " + (curC.c.seq || bd.cur + 1) + ": đã học " + curC.used + "/" + total + " · còn lại " + remaining + " buổi" + (bd.extraUsed ? " · Buổi lẻ ngoài khóa: " + bd.extraUsed : "") +
+      " &nbsp;|&nbsp; Toàn bộ: có mặt " + present + " · vắng " + absent + " · chưa điểm danh " + none + "</div>" +
+      "<table><thead><tr><th class='num'>Buổi</th><th>Ngày</th><th>Thứ</th><th>Giờ</th><th>Môn</th><th>Loại lớp</th><th>Giáo viên</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>" +
       "<tbody>" + (detailRows || "<tr><td colspan='9' style='text-align:center;color:#888'>Chưa có buổi học nào.</td></tr>") + "</tbody></table>" +
       "<div class='sign-row'><div class='col'><div class='role'>XÁC NHẬN CỦA TRUNG TÂM</div><div class='hint'>(Ký, ghi rõ họ tên)</div><div class='space'></div></div></div>" +
       "<scr" + "ipt>window.onload=function(){var g=document.images,n=g.length,d=0;function go(){if(++d>=n)setTimeout(function(){window.print();},250);}if(!n){setTimeout(function(){window.print();},250);return;}for(var i=0;i<n;i++){var m=g[i];if(m.complete)go();else{m.onload=go;m.onerror=go;}}};</scr" + "ipt>" +
@@ -1191,28 +1668,40 @@
     const now = startOfToday();
     $("proFrom").value = dmy(new Date(now.getFullYear(), now.getMonth(), 1));
     $("proTo").value = dmy(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    updateReportMonthLabel('pro');
+  }
+  function paymentDateKey(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit'}).formatToParts(date);
+    const field = type => parts.find(p => p.type === type).value;
+    return `${field('year')}-${field('month')}-${field('day')}`;
   }
   async function runProfit() {
+    const request = ++profitRequest;
+    try {
+    updateReportMonthLabel('pro');
     const from = dmyToYmd($("proFrom").value), to = dmyToYmd($("proTo").value);
     if (!from || !to) return toast("Nhập khoảng ngày hợp lệ.", "err");
     if (from > to) return toast("Ngày bắt đầu phải trước ngày kết thúc.", "err");
     $("profitResult").innerHTML = '<div class="state">Đang tính…</div>';
-    const income = allPayments.filter((p) => { const d = String(p.paid_at).slice(0, 10); return d >= from && d <= to; }).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const { data: scheds } = await B.listSchedules({ from, to, teacherId: null });
+    const [{data: payments, error: payError}, {data: scheds, error: scheduleError}] = await Promise.all([B.listPayments(), B.listSchedules({ from, to, teacherId: null })]);
+    if (request !== profitRequest) return;
+    if (payError || scheduleError) throw payError || scheduleError;
+    const income = (payments || []).filter(p => { const d = paymentDateKey(p.paid_at); return d >= from && d <= to; }).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const taught = (scheds || []).filter((s) => s.teacher_present === true);
     const rowsBy = {};
-    const { data: pAtts } = await B.listAttendanceBySchedules(taught.map((s) => s.id));
+    const { data: pAtts, error: attError } = await B.listAttendanceBySchedules(taught.map((s) => s.id));
+    if (request !== profitRequest) return;
+    if (attError) throw attError;
     (pAtts || []).forEach((a) => { (rowsBy[a.schedule_id] || (rowsBy[a.schedule_id] = [])).push(a); });
     let salary = 0;
     taught.forEach((s) => { const g = attendanceAgg(rowsBy[s.id]); salary += teacherPayForSession(teachersById[s.teacher_id], s.lesson_type || "ca_nhan", g.attending, g.absent); });
     const profit = income - salary;
-    $("profitResult").innerHTML =
-      `<div class="profit-cards">` +
-      profitCard("Tổng học phí thu", money(income), "good", "💰") +
-      profitCard("Tổng lương giáo viên", money(salary), "warn", "👨‍🏫") +
-      profitCard(profit >= 0 ? "LÃI" : "LỖ", money(Math.abs(profit)), profit >= 0 ? "primary" : "bad", profit >= 0 ? "📈" : "📉") +
-      `</div>` +
-      `<p class="hint" style="margin-top:14px;">Kỳ ${dmy(parseYmd(from))} – ${dmy(parseYmd(to))} · Lãi = Thu (${money(income)}) − Lương (${money(salary)}) = <b>${money(profit)}</b></p>`;
+    $("profitResult").innerHTML = `<section class="profit-summary" aria-label="Kết quả thu và lương"><div class="profit-period">${dmy(parseYmd(from))} — ${dmy(parseYmd(to))}</div><div class="profit-net ${profit < 0 ? 'negative' : ''}"><span>${profit >= 0 ? 'Chênh lệch thu và lương' : 'Chi lương vượt thu'}</span><strong>${money(Math.abs(profit))}</strong><small>${profit >= 0 ? 'Lãi trong kỳ' : 'Lỗ trong kỳ'}</small></div><dl class="profit-breakdown"><div><dt>Học phí đã thu</dt><dd>${money(income)}</dd></div><div><dt>Lương giáo viên</dt><dd>${money(salary)}</dd></div></dl></section>`;
+      } catch (error) {
+      if (request === profitRequest) $("profitResult").innerHTML = `<div class="empty">Không thể tính lãi: ${esc(error.message || error)}</div>`;
+    }
   }
   function profitCard(label, value, cls, icon) {
     return `<div class="profit-card ${cls}"><div class="pc-ic">${icon}</div><div class="pc-label">${label}</div><div class="pc-value">${value}</div></div>`;
@@ -1224,7 +1713,10 @@
   function renderTeachers() {
     if (!teachers.length) { $("teacherList").innerHTML = '<div class="empty"><div class="big">👨‍🏫</div>Chưa có giáo viên nào.</div>'; return; }
     const linkedName = (uid) => { const p = profilesById[uid]; return p ? (p.email || p.full_name) : "—"; };
-    $("teacherList").innerHTML = teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => {
+    const query = norm($("teacherSearch").value);
+    const filtered = teachers.filter(t => norm([t.full_name, t.specialty, t.phone, linkedName(t.user_id)].filter(Boolean).join(' ')).includes(query));
+    if (!filtered.length) { $("teacherList").innerHTML = '<div class="empty">Không tìm thấy giáo viên phù hợp.</div>'; return; }
+    $("teacherList").innerHTML = filtered.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => {
       const st = teacherStatsById[t.id] || { taught: 0, off: 0 };
       const statusCls = t.status === "inactive" ? "paused" : "active";
       const badge = `<span class="status-pill ${statusCls}">${teacherStatusLabel(t.status)}</span>`;
@@ -1322,18 +1814,37 @@
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     $("salFrom").value = dmy(first); $("salTo").value = dmy(last);
+    updateReportMonthLabel('sal');
+  }
+  function updateReportMonthLabel(prefix) {
+    const key = dmyToYmd($(prefix + 'From').value);
+    const d = key ? parseYmd(key) : startOfToday(), now = startOfToday();
+    $(prefix + 'MonthBtn').textContent = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() ? 'Tháng này' : `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
+  }
+  function shiftReportMonth(prefix, delta) {
+    const key = dmyToYmd($(prefix + 'From').value), current = key ? parseYmd(key) : startOfToday();
+    const first = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+    $(prefix + 'From').value = dmy(first);
+    $(prefix + 'To').value = dmy(new Date(first.getFullYear(), first.getMonth() + 1, 0));
+    updateReportMonthLabel(prefix);
+    if (prefix === 'sal') runSalary(); else runProfit();
   }
   async function runSalary() {
+    const request = ++salaryRequest;
+    updateReportMonthLabel('sal');
     const from = dmyToYmd($("salFrom").value), to = dmyToYmd($("salTo").value);
     if (!from || !to) return toast("Nhập khoảng ngày hợp lệ (dd/mm/yyyy).", "err");
     if (from > to) return toast("Ngày bắt đầu phải trước ngày kết thúc.", "err");
     $("salaryResult").innerHTML = '<div class="state">Đang tính…</div>';
     const { data, error } = await B.listSchedules({ from, to, teacherId: null });
     if (error) { $("salaryResult").innerHTML = '<div class="empty">Lỗi tải dữ liệu.</div>'; return; }
+    if (request !== salaryRequest) return;
     // Sĩ số thực học từng buổi (để hạ bậc lương khi HS nghỉ)
     const taughtIds = (data || []).filter((s) => s.teacher_present === true).map((s) => s.id);
     const rowsBy = {};
-    const { data: sAtts } = await B.listAttendanceBySchedules(taughtIds);
+    const { data: sAtts, error: attError } = await B.listAttendanceBySchedules(taughtIds);
+    if (request !== salaryRequest) return;
+    if (attError) { $("salaryResult").innerHTML = `<div class="empty">Không thể tính lương: ${esc(attError.message)}</div>`; return; }
     (sAtts || []).forEach((a) => { (rowsBy[a.schedule_id] || (rowsBy[a.schedule_id] = [])).push(a); });
     const rows = {};
     teachers.forEach((t) => (rows[t.id] = { t: t, name: t.full_name, counts: {}, off: 0, planned: 0 }));
@@ -1344,21 +1855,26 @@
       else if (s.teacher_present === false) r.off++;
     });
     const list = Object.values(rows).sort((a, b) => a.name.localeCompare(b.name, "vi"));
-    let grand = 0;
+    let grand = 0, salaryCards = "";
     const body = list.map((r) => {
       let taught = 0, amount = 0;
       const cells = LESSON_TYPES.map((lt) => { const c = r.counts[lt.key] || 0; taught += c; amount += c * teacherPayFor(r.t, lt.key); return `<td class="num">${c}</td>`; }).join("");
       grand += amount;
       const pdfBtn = taught ? `<button class="btn btn-sm" data-salpdf="${r.t.id}">🖨 PDF</button>` : "";
+      salaryCards += `<article class="salary-card"><header><h3>${esc(r.name)}</h3><strong>${money(amount)}</strong></header><dl class="salary-types">` +
+        LESSON_TYPES.map(lt => `<div><dt>${lt.label}</dt><dd>${r.counts[lt.key] || 0}</dd></div>`).join('') +
+        `</dl><footer><div><span>Đã dạy <b>${taught} buổi</b></span><span>Nghỉ <b>${r.off} buổi</b></span></div>${pdfBtn}</footer></article>`;
       return `<tr><td>${esc(r.name)}</td>${cells}<td class="num">${taught}</td><td class="num">${r.off}</td><td class="num money total">${money(amount)}</td><td class="num">${pdfBtn}</td></tr>`;
     }).join("");
     const typeHeaders = LESSON_TYPES.map((lt) => `<th class="num">${lt.label}</th>`).join("");
     const nCols = LESSON_TYPES.length;
     $("salaryResult").innerHTML =
-      `<div class="table-wrap"><table class="tbl"><thead><tr>` +
+      `<div class="salary-overview"><span>Tổng chi lương</span><strong>${money(grand)}</strong><small>${list.length} giáo viên</small></div>` +
+      `<details class="salary-all" ${window.matchMedia('(min-width: 901px)').matches ? 'open' : ''}><summary>Xem tất cả <span>Bảng tổng quan</span></summary><div class="table-wrap salary-table"><table class="tbl"><thead><tr>` +
       `<th>Giáo viên</th>${typeHeaders}<th class="num">Tổng dạy</th><th class="num">Nghỉ</th><th class="num">Thành tiền</th><th class="num">Phiếu lương</th>` +
       `</tr></thead><tbody>${body || `<tr><td colspan="${nCols + 5}" style="text-align:center;color:var(--muted)">Không có dữ liệu.</td></tr>`}</tbody>` +
-      `<tfoot><tr><td colspan="${nCols + 3}">TỔNG CHI LƯƠNG</td><td class="num money total">${money(grand)}</td><td></td></tr></tfoot></table></div>`;
+      `<tfoot><tr><td colspan="${nCols + 3}">TỔNG CHI LƯƠNG</td><td class="num money total">${money(grand)}</td><td></td></tr></tfoot></table></div></details>` +
+      `<div class="salary-cards">${salaryCards || '<div class="empty">Không có giáo viên.</div>'}</div>`;
   }
 
   // Xuất PHIẾU LƯƠNG PDF cho TỪNG giáo viên (mở cửa sổ in -> Lưu thành PDF)
@@ -1374,7 +1890,8 @@
       .sort((a, b) => (a.schedule_date + a.start_time).localeCompare(b.schedule_date + b.start_time));
     // Điểm danh HS từng buổi -> sĩ số, lý do nghỉ, và HẠ BẬC lương theo sĩ số thực đến
     const attBySched = {};
-    const { data: salAtts } = await B.listAttendanceBySchedules(ss.map((s) => s.id));
+    const { data: salAtts, error: attError } = await B.listAttendanceBySchedules(ss.map((s) => s.id));
+    if (attError) return toast("Không thể xuất phiếu lương: " + attError.message, "err");
     (salAtts || []).forEach((a) => { (attBySched[a.schedule_id] || (attBySched[a.schedule_id] = [])).push(a); });
     const counts = {}; let total = 0;   // đếm & cộng lương theo loại lớp HIỆU DỤNG
     ss.forEach((s) => { const g = attendanceAgg(attBySched[s.id]); const k = effectiveLessonType(s.lesson_type || "ca_nhan", g.attending, g.absent); counts[k] = (counts[k] || 0) + 1; total += teacherPayFor(t, k); });
@@ -1455,33 +1972,34 @@
   //  HỌC PHÍ HỌC SINH (admin)
   // =====================================================================
   function renderTuition() {
-    const q = ($("tuitionSearch").value || "").trim().toLowerCase();
-    const list = students.filter((s) => !q || (s.full_name || "").toLowerCase().includes(q) || (s.subject || "").toLowerCase().includes(q));
-    if (!list.length) { $("tuitionResult").innerHTML = '<div class="empty"><div class="big">🧮</div>Chưa có học sinh.</div>'; return; }
+    const q = norm($("tuitionSearch").value);
+    const list = students.filter((s) => !q || [s.full_name, s.subject, s.phone, s.guardian].some((v) => norm(v).includes(q)));
+    if (!list.length) { $("tuitionResult").innerHTML = `<div class="empty"><div class="big">🧮</div>${q ? "Không tìm thấy học sinh phù hợp." : "Chưa có học sinh."}</div>`; return; }
     let totalCollected = 0, totalCourse = 0;
     const body = list.map((s) => {
       const p = studentProgress(s);
-      const collected = p.used * (s.tuition_per_session || 0);
-      const courseFee = p.total * (s.tuition_per_session || 0);
+      const collected = earnedTuition(s);
+      const courseFee = p.total * p.fee;
       totalCollected += collected; totalCourse += courseFee;
-      const tag = (p.remaining === 0 && p.total) || s.status === "completed" ? '<span class="tag-done">Đã KT</span>'
-        : (p.remaining <= 2 && p.total ? '<span class="tag-near">Sắp KT</span>' : "");
+      const tag = p.done ? `<span class="tag-done">Hết khóa</span>${p.extra ? ` <span class="tag-extra">+${p.extra} lẻ</span>` : ""}`
+        : s.status === "completed" ? '<span class="tag-done">Đã KT</span>'
+        : (p.remaining <= 2 && p.total ? '<span class="tag-near">Sắp hết</span>' : "");
       return `<tr><td>${esc(s.full_name)} ${tag}</td><td>${esc(s.subject || "—")}</td><td><span class="lt-badge">${lessonTypeLabel(s.lesson_type)}</span></td>` +
-        `<td class="num">${p.used}/${p.total}</td><td class="num">${p.remaining}</td>` +
-        `<td class="num">${money(s.tuition_per_session)}</td><td class="num money">${money(courseFee)}</td>` +
+        `<td class="num">${p.seq}</td><td class="num">${p.used}/${p.total}</td><td class="num">${p.remaining}</td>` +
+        `<td class="num">${money(p.fee)}</td><td class="num money">${money(courseFee)}</td>` +
         `<td class="num money total">${money(collected)}</td></tr>`;
     }).join("");
     $("tuitionResult").innerHTML =
       `<div class="table-wrap"><table class="tbl"><thead><tr>` +
-      `<th>Học sinh</th><th>Môn</th><th>Loại</th><th class="num">Đã học</th><th class="num">Còn lại</th><th class="num">HP/buổi</th><th class="num">HP cả khóa</th><th class="num">Thực thu</th>` +
+      `<th>Học sinh</th><th>Môn</th><th>Loại</th><th class="num">Khóa</th><th class="num">Đã học</th><th class="num">Còn lại</th><th class="num">HP/buổi</th><th class="num">HP khóa này</th><th class="num">Thực thu (mọi khóa)</th>` +
       `</tr></thead><tbody>${body}</tbody>` +
-      `<tfoot><tr><td colspan="6">TỔNG</td><td class="num money">${money(totalCourse)}</td><td class="num money total">${money(totalCollected)}</td></tr></tfoot></table></div>`;
+      `<tfoot><tr><td colspan="7">TỔNG</td><td class="num money">${money(totalCourse)}</td><td class="num money total">${money(totalCollected)}</td></tr></tfoot></table></div>`;
   }
   function exportTuitionCSV() {
-    const rows = [["Học sinh", "Môn", "Loại lớp", "Đã học", "Tổng buổi", "Còn lại", "HP mỗi buổi", "HP cả khóa", "Thực thu", "Trạng thái"]];
+    const rows = [["Học sinh", "Môn", "Loại lớp", "Khóa", "Đã học", "Tổng buổi", "Còn lại", "Buổi lẻ", "HP mỗi buổi", "HP khóa này", "Thực thu (mọi khóa)", "Trạng thái"]];
     students.forEach((s) => {
       const p = studentProgress(s);
-      rows.push([s.full_name, s.subject || "", lessonTypeLabel(s.lesson_type), p.used, p.total, p.remaining, s.tuition_per_session || 0, p.total * (s.tuition_per_session || 0), p.used * (s.tuition_per_session || 0), statusLabel(s.status)]);
+      rows.push([s.full_name, s.subject || "", lessonTypeLabel(s.lesson_type), p.seq, p.used, p.total, p.remaining, p.extra, p.fee, p.total * p.fee, earnedTuition(s), statusLabel(s.status)]);
     });
     const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -1520,8 +2038,8 @@
     $("notifyCourses").innerHTML = alerts.length ? alerts.map(({ s, p }) => {
       const done = p.remaining === 0 || s.status === "completed";
       return `<div class="info-card"><div class="ic-head"><div class="ic-avatar">${done ? "🎉" : "⚠️"}</div>` +
-        `<div class="ic-title"><div class="nm">${esc(s.full_name)} ${done ? '<span class="tag-done">Đã kết thúc khóa</span>' : '<span class="tag-near">Còn ' + p.remaining + ' buổi</span>'}</div>` +
-        `<div class="sb">${esc(s.subject || "")} · đã học ${p.used}/${p.total} buổi · ${esc((teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name) || "")}</div></div></div></div>`;
+        `<div class="ic-title"><div class="nm">${esc(s.full_name)} ${done ? `<span class="tag-done">Hết khóa ${p.seq}</span>` : '<span class="tag-near">Còn ' + p.remaining + ' buổi</span>'}${p.extra ? ` <span class="tag-extra">${p.extra} buổi lẻ</span>` : ""}</div>` +
+        `<div class="sb">${esc(s.subject || "")} · khóa ${p.seq}: đã học ${p.used}/${p.total} buổi · ${esc((teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name) || "")}${done && isAdmin() ? " · vào Học sinh → “Mở khóa mới”" : ""}</div></div></div></div>`;
     }).join("") : '<div class="empty">Chưa có khóa nào sắp kết thúc.</div>';
 
     updateNotifyBadge(scheds, now, alerts.length);
@@ -1533,6 +2051,7 @@
     const n = upcoming + (courseAlerts || 0);
     const b = $("notifyBadge");
     if (n > 0) { b.hidden = false; b.textContent = n; } else b.hidden = true;
+    $("topNotifyBadge").hidden = n === 0; $("topNotifyBadge").textContent = n > 99 ? '99+' : n;
   }
 
   // =====================================================================
@@ -1577,12 +2096,16 @@
     const bar = $("reminderBar");
     if (next) {
       bar.classList.remove("hidden");
-      bar.innerHTML = `🔔 Sắp tới: <b>${hhmm(next.s.start_time)} · ${esc(next.s.subject)}</b> (${esc(teacherDisplay(next.s))})${next.s.room ? " · 📍 " + esc(next.s.room) : ""} — còn ${fmtMins(next.mins)} <button class="rb-x" title="Ẩn">×</button>`;
+      bar.innerHTML = `<span class="rb-ic">${NOTE_ICON}</span>` +
+        `<div class="rb-text"><span class="rb-label">Buổi tiếp theo · còn ${fmtMins(next.mins)}</span>` +
+        `<strong>${hhmm(next.s.start_time)}<i>·</i>${esc(next.s.subject)}${next.s.room ? `<i>·</i>${esc(next.s.room)}` : ""}</strong>` +
+        `<span class="rb-sub">${esc(teacherDisplay(next.s))}</span></div>` +
+        `<button class="rb-x" title="Ẩn" aria-label="Ẩn">×</button>`;
     } else bar.classList.add("hidden");
   }
   function fireReminder(s, mins) {
-    toast(`🔔 Sắp tới: ${hhmm(s.start_time)} ${s.subject} — còn ${fmtMins(mins)}`, "ok");
-    if (window.Notification && Notification.permission === "granted") {
+    // Nhắc lịch xuất hiện trong bảng thông báo, không đẩy popup lên màn hình chính.
+    if (window.Notification && Notification.permission === "granted" && $("notifPerm").checked) {
       try { new Notification("OPENMUSIC — Sắp đến giờ lớp", { body: `${hhmm(s.start_time)} · ${s.subject} (${teacherDisplay(s)})${s.room ? " · " + s.room : ""}\nCòn ${fmtMins(mins)} nữa.` }); } catch (e) {}
     }
   }
@@ -1595,6 +2118,7 @@
     if (window.Notification) $("notifPerm").checked = Notification.permission === "granted";
   }
   function renderPricing() {
+    $("pricingStudent").innerHTML = '<option value="">Chọn học sinh…</option>' + students.slice().sort((a,b) => a.full_name.localeCompare(b.full_name,'vi')).map(s => `<option value="${esc(s.id)}">${esc(s.full_name)}</option>`).join('');
     const dp = settings.default_pay || {}, dt = settings.default_tuition || {};
     $("pricingBody").innerHTML = LESSON_TYPES.map((t) =>
       `<div class="price-row"><div class="pr-type">${t.label}</div>` +
@@ -1603,7 +2127,7 @@
       `</div>`
     ).join("");
   }
-  function renderSettings() { initSettingsUI(); renderPricing(); }
+  function renderSettings() { initSettingsUI(); renderPricing(); fillRuleSelect($("courseRuleDefault"), defaultCountRule(), false); }
   async function savePricing() {
     const dp = readRateInputs($("pricingBody"), "data-dp");
     const dt = readRateInputs($("pricingBody"), "data-dt");
@@ -1635,15 +2159,55 @@
   // =====================================================================
   //  SIDEBAR (mobile)
   // =====================================================================
-  function openSidebar() { $("sidebar").classList.add("open"); $("scrim").hidden = false; }
-  function closeSidebar() { $("sidebar").classList.remove("open"); $("scrim").hidden = true; }
+  let managementFocus = null;
+  function openSidebar() {
+    managementFocus = document.activeElement;
+    $("sidebar").classList.add("open"); $("scrim").hidden = false;
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      document.body.classList.add('management-open');
+      $("sidebar").setAttribute('role', 'dialog'); $("sidebar").setAttribute('aria-modal', 'true'); $("sidebar").setAttribute('aria-label', 'Quản lý');
+      $("managementClose").focus();
+    }
+  }
+  function closeSidebar() {
+    const wasOpen = $("sidebar").classList.contains('open');
+    $("sidebar").classList.remove("open"); $("scrim").hidden = true;
+    document.body.classList.remove('management-open');
+    ['role','aria-modal','aria-label'].forEach(a => $("sidebar").removeAttribute(a));
+    if (wasOpen && managementFocus) managementFocus.focus();
+  }
 
-  function closeAllModals() { ["modal", "studentModal", "teacherModal"].forEach((id) => $(id).classList.add("hidden")); }
+  function closeAllModals() { document.querySelectorAll(".modal-backdrop").forEach(el => el.classList.add("hidden")); ["modal", "studentModal", "teacherModal", "courseModal", "payModal", "weekModal"].forEach(id => { if ($(id)) $(id).classList.add("hidden"); }); }
 
   // =====================================================================
   //  GẮN SỰ KIỆN
   // =====================================================================
   function wireEvents() {
+    $("pageSearchBtn").addEventListener('click', openPageSearch);
+    $("pageSearchInput").addEventListener('input', renderPageSearch);
+    $("pageSearchInput").addEventListener('keydown', e => { if (e.key === 'Enter') $("pageSearchDialog").close(); });
+    $("pageSearchClose").addEventListener('click', () => $("pageSearchDialog").close());
+    $("pageSearchDone").addEventListener('click', () => $("pageSearchDialog").close());
+    $("pageSearchResults").addEventListener('click', e => { const b=e.target.closest('[data-search-name]'); if(b) { $("pageSearchInput").value=b.dataset.searchName; renderPageSearch(); $("pageSearchDialog").close(); } });
+    $("pageSearchDialog").addEventListener('click', e => { if(e.target!==e.currentTarget)return; const r=e.currentTarget.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.currentTarget.close(); });
+    $("notificationsBtn").addEventListener('click', async () => {
+      const dialog = $("notificationsDialog");
+      $("notificationsContent").innerHTML = '<p class="state">Đang tải thông báo…</p>';
+      dialog.showModal();
+      await renderNotify();
+      $("notificationsContent").innerHTML = '<h3>Lịch học hôm nay</h3>' + $("notifyToday").innerHTML + '<h3>Khóa học cần chú ý</h3>' + $("notifyCourses").innerHTML;
+    });
+    $("notificationsClose").addEventListener('click', () => $("notificationsDialog").close());
+    $("notificationsDialog").addEventListener('click', e => { if (e.target !== e.currentTarget) return; const r=e.currentTarget.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.currentTarget.close(); });
+    document.querySelectorAll('[data-report-month]').forEach(button => button.addEventListener('click', () => { const [prefix,delta] = button.dataset.reportMonth.split(':'); shiftReportMonth(prefix, Number(delta)); }));
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeAccountMenu(); document.querySelectorAll('.student-picker[open]').forEach(p => p.open = false); }
+      if (e.key !== 'Tab' || !document.body.classList.contains('management-open')) return;
+      const controls = [...$("sidebar").querySelectorAll('button:not([disabled])')].filter(b => b.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
     // Theme
     $("themeBtn").addEventListener("click", () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"));
 
@@ -1658,11 +2222,11 @@
     $("lnkSignup").addEventListener("click", () => setAuthMode("signup"));
     $("lnkBack").addEventListener("click", () => setAuthMode("login"));
     ["authName", "authEmail", "authPass", "authNew", "authNew2"].forEach((id) => $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") $("authPrimary").click(); }));
-    $("logoutBtn").addEventListener("click", async () => { await B.signOut(); });
 
     // Menu tài khoản (admin xem lịch GV khác)
     $("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
     $("accountMenu").addEventListener("click", (e) => {
+      if (e.target.closest("#logoutBtn")) { closeAccountMenu(); B.signOut(); return; }
       const it = e.target.closest("[data-amteacher]");
       if (it) viewTeacherSchedule(it.getAttribute("data-amteacher"));
     });
@@ -1672,6 +2236,7 @@
     $("menu").addEventListener("click", (e) => { const b = e.target.closest(".menu-item"); if (b) switchView(b.getAttribute("data-view")); });
     $("menuBtn").addEventListener("click", openSidebar);
     $("scrim").addEventListener("click", closeSidebar);
+    $("managementClose").addEventListener("click", closeSidebar);
     $("sidebarToggle").addEventListener("click", toggleSidebarCollapse);
 
     // Reminder bar đóng
@@ -1681,11 +2246,25 @@
     document.querySelectorAll("[data-nav]").forEach((btn) => btn.addEventListener("click", () => { const [k, d] = btn.getAttribute("data-nav").split(":"); navigate(k, parseInt(d, 10)); }));
     $("datePicker").addEventListener("change", () => { const y = dmyToYmd($("datePicker").value); if (y) setViewDate(parseYmd(y)); });
     $("todayBtn").addEventListener("click", () => setViewDate(startOfToday()));
+    $("scheduleDays").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-schedule-date]");
+      if (!btn) return;
+      viewDate = parseYmd(btn.dataset.scheduleDate);
+      $("datePicker").value = dmy(viewDate);
+      renderScheduleDays();
+      const block = document.querySelector(`[data-schedule-block="${btn.dataset.scheduleDate}"]`);
+      if (block && block.getClientRects().length) block.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    });
+    document.addEventListener("click", (e) => { if (!e.target.closest("#scheduleMore")) $("scheduleMore").open = false; });
+    $("scheduleMore").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { $("scheduleMore").open = false; $("scheduleMore").querySelector("summary").focus(); }
+    });
     $("teacherFilter").addEventListener("change", () => { loadWeek(); });
     $("addBtn").addEventListener("click", () => openScheduleModal(null, ymd(viewDate), buoiOf(new Date().toTimeString())));
 
     // Áp dụng cả tuần cho các tuần sau
     $("applyWeekBtn").addEventListener("click", () => {
+      $("scheduleMore").open = false;
       const ws = startOfWeek(viewDate);
       const backStart = startOfWeek(new Date(ws.getFullYear(), ws.getMonth() - 3, 1));
       openWeekPicker({
@@ -1736,6 +2315,8 @@
 
     // Hôm nay — điểm danh
     $("todayList").addEventListener("click", (e) => {
+      const add = e.target.closest("[data-addstudent]");
+      if (add) { const [sid, stid] = add.dataset.addstudent.split('|'); addStudentToClass(sid, stid); return; }
       const att = e.target.closest("[data-att]"), tp = e.target.closest("[data-tpv]"), rm = e.target.closest("[data-attrm]");
       if (att) { const [sid, stid, v] = att.getAttribute("data-att").split("|"); markStudent(sid, stid, v === "1"); }
       else if (tp) { const wrap = tp.closest("[data-tp]"); markTeacher(wrap.getAttribute("data-tp"), tp.getAttribute("data-tpv") === "1"); }
@@ -1744,13 +2325,32 @@
     $("todayList").addEventListener("change", (e) => {
       const sel = e.target.closest("[data-addsel]");
       if (sel) { addStudentToClass(sel.getAttribute("data-addsel"), sel.value); return; }
+      const exc = e.target.closest("[data-attexc]");
+      if (exc) { const [sid, stid] = exc.getAttribute("data-attexc").split("|"); markExcused(sid, stid, exc.checked); return; }
       const note = e.target.closest("[data-attnote]");
       if (note) { const [sid, stid] = note.getAttribute("data-attnote").split("|"); saveAttNote(sid, stid, note.value); }
+    });
+    // ô tìm học sinh để thêm vào lớp
+    $("todayList").addEventListener("input", (e) => {
+      const q = e.target.closest("[data-studentquery]");
+      if (q) {
+        const panel = q.closest('.student-picker-panel'), query = norm(q.value); let count = 0;
+        panel.querySelectorAll('[data-studentmatch]').forEach(b => { b.hidden = !b.dataset.studentmatch.includes(query); if (!b.hidden) count++; });
+        panel.querySelector('.student-picker-empty').hidden = count > 0;
+      }
     });
     // Hôm nay — điều hướng ngày điểm danh
     document.querySelectorAll("[data-attnav]").forEach((btn) =>
       btn.addEventListener("click", () => setAttDate(addDays(attDate, parseInt(btn.getAttribute("data-attnav"), 10)))));
-    $("attTodayBtn").addEventListener("click", () => setAttDate(startOfToday()));
+    // dải tuần: chọn ngày / lùi-tiến 1 tuần / bấm tên tháng để mở lịch
+    $("wsDays").addEventListener("click", (e) => { const b = e.target.closest("[data-wsday]"); if (b) setAttDate(new Date(b.getAttribute("data-wsday") + "T00:00:00")); });
+    $("wsPrev").addEventListener("click", () => setAttDate(addDays(attDate, -7)));
+    $("wsNext").addEventListener("click", () => setAttDate(addDays(attDate, 7)));
+    // thanh tab dưới (mobile)
+    $("tabbar").addEventListener("click", (e) => {
+      const b = e.target.closest(".tab"); if (!b) return;
+      if (b.id === "tabMore") openSidebar(); else switchView(b.getAttribute("data-view"));
+    });
     $("attDatePicker").addEventListener("change", () => { const y = dmyToYmd($("attDatePicker").value); if (y) setAttDate(parseYmd(y)); });
 
     // Modal buổi học
@@ -1759,16 +2359,49 @@
     $("modalSave").addEventListener("click", saveSchedule);
     $("scheduleForm").addEventListener("submit", (e) => { e.preventDefault(); saveSchedule(); });
     $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeScheduleModal(); });
+    // lọc danh sách HS trong popup buổi học (HS đã tick luôn hiện)
+    $("fStudentSearch").addEventListener("input", () => {
+      const q = norm($("fStudentSearch").value);
+      document.querySelectorAll("#fStudents .chk-item").forEach((el) => {
+        el.hidden = !!q && !el.getAttribute("data-q").includes(q) && !el.querySelector("input").checked;
+      });
+    });
 
     // Học sinh
     $("addStudentBtn").addEventListener("click", () => openStudentModal(null));
     $("studentSearch").addEventListener("input", renderStudents);
+    $("studentSearchToggle").addEventListener("click", () => $("studentSearch").focus());
+    $("studentSearch").addEventListener("input", () => $("studentSearch").closest('.student-search').classList.toggle('has-query', !!$("studentSearch").value));
     $("studentList").addEventListener("click", (e) => {
       const ed = e.target.closest("[data-stedit]"), de = e.target.closest("[data-stdel]"), pa = e.target.closest("[data-stpay]"), pf = e.target.closest("[data-stpdf]");
       if (pf) exportStudentAttendancePDF(pf.getAttribute("data-stpdf"));
       else if (pa) openPaymentModal(pa.getAttribute("data-stpay"));
+      else if (e.target.closest("[data-stcourse]")) openCourseModal(e.target.closest("[data-stcourse]").getAttribute("data-stcourse"));
+      else if (e.target.closest("[data-stnewcourse]")) openCourseModal(e.target.closest("[data-stnewcourse]").getAttribute("data-stnewcourse"));
       else if (ed) openStudentModal(studentsById[ed.getAttribute("data-stedit")]);
       else if (de) deleteStudent(de.getAttribute("data-stdel"));
+    });
+    // Modal khóa học
+    $("cmClose").addEventListener("click", closeCourseModal);
+    $("cmCancel").addEventListener("click", closeCourseModal);
+    $("cmSave").addEventListener("click", saveCourse);
+    $("courseForm").addEventListener("submit", (e) => { e.preventDefault(); saveCourse(); });
+    $("courseModal").addEventListener("click", (e) => { if (e.target === $("courseModal")) closeCourseModal(); });
+    $("cmTotalPick").addEventListener("click", (e) => { const b = e.target.closest("[data-total]"); if (b) setCmTotal(b.getAttribute("data-total")); });
+    $("cmTotal").addEventListener("input", () => setCmTotal($("cmTotal").value));
+    $("cmList").addEventListener("click", (e) => {
+      const ed = e.target.closest("[data-cmedit]"), de = e.target.closest("[data-cmdel]");
+      if (ed) fillCourseForm(studentsById[$("cmStudentId").value], Number(ed.getAttribute("data-cmedit")));
+      else if (de) deleteCourse(de.getAttribute("data-cmdel"));
+    });
+    // Cài đặt — cách trừ buổi mặc định
+    $("saveCourseRule").addEventListener("click", async () => {
+      const v = $("courseRuleDefault").value;
+      const { error } = await B.saveSetting("course_count_rule", v);
+      if (error) return toast("Lưu thất bại: " + error.message, "err");
+      settings.course_count_rule = v;
+      students.forEach((s) => rebuildCourseInfo(s.id));
+      toast("Đã lưu cách trừ buổi mặc định.", "ok");
     });
     // Modal học phí
     $("payClose").addEventListener("click", closePaymentModal);
@@ -1787,6 +2420,8 @@
 
     // Giáo viên
     $("addTeacherBtn").addEventListener("click", () => openTeacherModal(null));
+    $("teacherSearchToggle").addEventListener("click", () => $("teacherSearch").focus());
+    $("teacherSearch").addEventListener("input", () => { $("teacherSearch").closest('.teacher-search').classList.toggle('has-query', !!$("teacherSearch").value); renderTeachers(); });
     $("teacherList").addEventListener("click", (e) => {
       const ed = e.target.closest("[data-tcedit]"), de = e.target.closest("[data-tcdel]");
       if (ed) openTeacherModal(teachersById[ed.getAttribute("data-tcedit")]);
@@ -1817,13 +2452,21 @@
       }
     });
     $("testNotify").addEventListener("click", () => { fireReminder({ start_time: "00:00", subject: "Thử thông báo", teacher_name: "OPENMUSIC", room: "" }, 0); });
-    $("resetDemo").addEventListener("click", () => { if (confirm("Đặt lại toàn bộ dữ liệu DEMO về ban đầu?")) { if (B.resetDemo) B.resetDemo(); location.reload(); } });
     $("savePricing").addEventListener("click", savePricing);
+    $("adjustStudentPricing").addEventListener("click", () => {
+      const sid = $("pricingStudent").value;
+      if (!sid) return toast('Chọn học sinh cần điều chỉnh học phí.', 'err');
+      const st = studentsById[sid], bd = courseInfo[sid] || courseBreakdown(st, []);
+      openCourseModal(sid, bd.courses.length - 1);
+    });
+    ['cmFee','cmBaseFee'].forEach(id => $(id).addEventListener('input', e => formatMoneyTyping(e.target)));
+    ["cmFeeMode","cmBaseFee","cmDiscount","cmFee","cmTotal"].forEach(id => $(id).addEventListener(id === 'cmFeeMode' ? 'change' : 'input', updateCourseFee));
+    $("cmTotalPick").addEventListener('click', updateCourseFee);
     // Tự điền học phí theo bảng giá khi đổi loại lớp (chỉ khi đang THÊM mới)
     $("smLessonType").addEventListener("change", () => { if (!$("smId").value) { const d = defaultTuition($("smLessonType").value); if (d) $("smFee").value = d; } });
 
     // Mask ngày/giờ + nút lịch
-    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire", "payDate", "proFrom", "proTo"].forEach((id) => maskDate($(id)));
+    ["fDate", "datePicker", "smStart", "salFrom", "salTo", "attDatePicker", "tmDob", "tmHire", "payDate", "proFrom", "proTo", "cmStart"].forEach((id) => maskDate($(id)));
     ["fStart", "fEnd", "payTime"].forEach((id) => maskTime($(id)));
     document.querySelectorAll(".cal-btn").forEach(wireCal);
 
@@ -1836,6 +2479,7 @@
       else if (!$("studentModal").classList.contains("hidden")) closeStudentModal();
       else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();
       else if (!$("paymentModal").classList.contains("hidden")) closePaymentModal();
+      else if (!$("courseModal").classList.contains("hidden")) closeCourseModal();
       else if ($("sidebar").classList.contains("open")) closeSidebar();
     });
   }

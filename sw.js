@@ -6,13 +6,15 @@
 //  - Request tới Supabase (khác domain, dữ liệu thật) KHÔNG bao giờ cache.
 //  Đổi số VERSION khi muốn xoá sạch cache cũ trên máy người dùng.
 // =====================================================================
-const VERSION = "om-v1";
+const VERSION = "om-v2-liquid-glass";
 const SHELL = [
   "./",
   "index.html",
   "styles.css",
+  "treble-clef.svg",
   "app.js",
   "backend.js",
+  "vendor/supabase-2.118.0.js",
   "config.js",
   "manifest.webmanifest",
   "favicon.png",

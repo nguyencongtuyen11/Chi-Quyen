@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
-  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="theme-color" content="#e7efeb" />
   <meta name="description" content="Trung tâm Nghệ thuật OPENMUSIC — Thời khóa biểu, điểm danh, tính lương giáo viên và học phí học sinh." />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="OPENMUSIC — Quản lý Trung tâm" />
@@ -16,12 +16,15 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="OPENMUSIC" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+  <!-- Nền Liquid Glass (các quầng màu mờ phía sau lớp kính) -->
+  <div class="ambient" aria-hidden="true"><i class="orb orb-a"></i><i class="orb orb-b"></i><i class="orb orb-c"></i><i class="treble-clef">𝄞</i></div>
 
   <!-- ===================== APP SHELL ===================== -->
   <div id="app" class="layout hidden">
@@ -31,6 +34,7 @@
 
     <!-- ===== SIDEBAR / MENU ===== -->
     <aside class="sidebar" id="sidebar">
+      <div class="management-sheet-head"><span>Quản lý</span><button type="button" id="managementClose" aria-label="Đóng quản lý">×</button></div>
       <div class="side-brand">
         <div class="logo" id="logoBox"></div>
         <div class="side-title">
@@ -51,7 +55,7 @@
         <button class="menu-item" data-view="settings"><span class="mi-ic">⚙️</span> Cài đặt</button>
       </nav>
 
-      <div class="side-foot">
+      <div class="side-foot"><div class="management-theme"><span>Giao diện sáng / tối</span><button class="icon-btn" id="themeBtn" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện"></button></div>
         <button class="collapse-btn" id="sidebarToggle" title="Thu gọn menu" aria-label="Thu gọn menu">
           <svg class="cb-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           <span class="cb-label">Thu gọn</span>
@@ -65,9 +69,11 @@
         <button class="icon-btn only-mobile" id="menuBtn" aria-label="Mở menu" title="Menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
+        <div class="tb-brand"><img src="logo-icon.png" alt="OPENMUSIC" /><h1 id="topViewTitle">Hôm nay</h1></div>
         <h2 class="page-title" id="pageTitle">Hôm nay</h2>
         <div class="spacer"></div>
-        <button class="icon-btn" id="themeBtn" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện"></button>
+        <button class="icon-btn" id="pageSearchBtn" title="Tìm kiếm" aria-label="Mở tìm kiếm" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><button class="icon-btn" id="notificationsBtn" aria-label="Xem thông báo" title="Thông báo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="topNotifyBadge" hidden></span></button>
+
         <div class="account-wrap">
           <button class="account" id="accountBtn" type="button">
             <div class="avatar" id="accAvatar">?</div>
@@ -79,33 +85,39 @@
           </button>
           <div class="account-menu hidden" id="accountMenu"></div>
         </div>
-        <button class="icon-btn" id="logoutBtn" title="Đăng xuất" aria-label="Đăng xuất">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-        </button>
       </header>
 
       <!-- Nhắc lịch hôm nay (hiện ở mọi trang) -->
-      <div class="reminder-bar hidden" id="reminderBar"></div>
+      <dialog id="notificationsDialog" aria-labelledby="notificationsTitle"><div class="dialog-top"><h2 id="notificationsTitle">Thông báo</h2><button type="button" id="notificationsClose" aria-label="Đóng thông báo">×</button></div><div class="reminder-bar hidden" id="reminderBar"></div><div id="notificationsContent"></div></dialog>
 
       <div class="content">
 
+        <!-- Tiêu đề lớn kiểu iOS -->
+        <div class="hero">
+          <h1 class="hero-title"><span id="heroTitle">Hôm nay</span><span class="hero-dot">.</span></h1>
+        </div>
+        <div class="page-meta"></div>
+
         <!-- ============ VIEW: HÔM NAY & ĐIỂM DANH ============ -->
         <section class="view" id="view-today">
-          <div class="att-datenav">
-            <button class="btn" data-attnav="-1">‹ Hôm trước</button>
-            <div class="date-wrap att-date-wrap">
-              <input type="text" id="attDatePicker" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" title="Chọn ngày điểm danh" />
-              <button type="button" class="cal-btn" data-cal="attDatePicker" aria-label="Chọn ngày">📅</button>
-              <input type="date" id="attDatePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
+          <!-- Dải chọn ngày trong tuần -->
+          <div class="week-strip" id="weekStrip">
+            <div class="ws-head">
+              <button class="ws-month cal-btn" id="wsMonth" data-cal="attDatePicker" type="button" aria-label="Chọn ngày điểm danh"><span id="wsMonthLabel">—</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+              <div class="ws-nav">
+                <button type="button" id="wsPrev" aria-label="Tuần trước"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <button type="button" id="wsNext" aria-label="Tuần sau"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+              </div>
             </div>
-            <button class="btn" data-attnav="1">Hôm sau ›</button>
-            <button class="btn" id="attTodayBtn">Hôm nay</button>
+            <div class="ws-days" id="wsDays"></div>
           </div>
+          <input type="hidden" id="attDatePicker" />
+          <input type="date" id="attDatePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
           <div class="migration-banner" id="migrationBanner" hidden>🛠️ Đang mở điểm danh cho các buổi <b>quá khứ</b> (chế độ migration dữ liệu).</div>
           <div class="view-head">
             <div>
               <h3 id="todayTitle">Lớp học hôm nay</h3>
-              <p class="sub" id="todayDate">—</p>
+              <p class="sub" id="todayDate" hidden></p>
             </div>
             <div class="stat-chips" id="todayStats"></div>
           </div>
@@ -114,32 +126,39 @@
 
         <!-- ============ VIEW: THỜI KHÓA BIỂU ============ -->
         <section class="view" id="view-schedule" hidden>
-          <div class="toolbar">
-            <div class="spacer"></div>
-            <select id="teacherFilter" class="admin-only" title="Lọc theo giáo viên">
-              <option value="all">Tất cả giáo viên</option>
-            </select>
-            <button class="btn admin-only" id="applyWeekBtn" title="Sao chép cả tuần này sang các tuần khác">📋 Áp dụng tuần…</button>
-            <button class="btn primary admin-only" id="addBtn">+ Thêm buổi học</button>
-          </div>
-          <div class="datenav">
-            <button class="btn" data-nav="month:-1">« Tháng trước</button>
-            <button class="btn" data-nav="week:-1">‹ Tuần trước</button>
-            <div class="nav-center">
-              <div class="curdate">
-                <div class="dmy" id="navRange">—</div>
-                <div class="dow" id="navMonth">—</div>
+          <div class="schedule-controls">
+            <div class="schedule-calendar" aria-label="Điều hướng lịch tuần">
+              <div class="schedule-calendar-head">
+                <div class="schedule-period date-wrap">
+                  <button type="button" class="schedule-month cal-btn" data-cal="datePicker" aria-label="Chọn tháng hoặc ngày">
+                    <span id="navMonth">—</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                  </button>
+                  <span id="navRange" class="schedule-range" hidden>—</span>
+                  <input type="text" id="datePicker" class="schedule-date-source" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" tabindex="-1" aria-hidden="true" />
+                  <input type="date" id="datePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
+                </div>
+                <div class="schedule-week-nav">
+                  <button type="button" class="schedule-arrow" data-nav="week:-1" aria-label="Tuần trước"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+                  <button type="button" id="todayBtn">Tuần này</button>
+                  <button type="button" class="schedule-arrow" data-nav="week:1" aria-label="Tuần sau"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
+                </div>
+              </div>
+              <div class="schedule-days" id="scheduleDays" aria-label="Chọn ngày để xem lịch"></div>
+            </div>
+            <div class="schedule-actions">
+              <label class="schedule-teacher admin-only">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/></svg>
+                <select id="teacherFilter" title="Lọc theo giáo viên" aria-label="Lọc theo giáo viên"><option value="all">Tất cả giáo viên</option></select>
+              </label>
+              <div class="schedule-action-end admin-only">
+                <button class="btn primary" id="addBtn" aria-label="Thêm buổi học"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="schedule-add-full">Thêm buổi học</span><span class="schedule-add-short" aria-hidden="true">Thêm buổi</span></button>
+                <details class="schedule-more" id="scheduleMore">
+                  <summary aria-label="Tùy chọn lịch tuần" title="Tùy chọn lịch tuần"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></summary>
+                  <div class="schedule-more-menu"><button type="button" id="applyWeekBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>Áp dụng lịch tuần…</button></div>
+                </details>
               </div>
             </div>
-            <button class="btn" data-nav="week:1">Tuần sau ›</button>
-            <button class="btn" data-nav="month:1">Tháng sau »</button>
-            <span class="spacer-grow"></span>
-            <div class="date-wrap">
-              <input type="text" id="datePicker" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" title="Tới tuần chứa ngày này" />
-              <button type="button" class="cal-btn" data-cal="datePicker" aria-label="Chọn ngày">📅</button>
-              <input type="date" id="datePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
-            </div>
-            <button class="btn" id="todayBtn">Tuần này</button>
           </div>
           <div class="tkb-wrap loading" id="tkbWrap">
             <div id="loading" class="state">Đang tải…</div>
@@ -150,9 +169,8 @@
 
         <!-- ============ VIEW: HỌC SINH ============ -->
         <section class="view" id="view-students" hidden>
-          <div class="toolbar">
-            <input type="search" id="studentSearch" class="search" placeholder="🔍 Tìm học sinh…" />
-            <div class="spacer"></div>
+          <div class="toolbar"><span class="search-count" id="studentCount" hidden></span>
+            <div class="student-search"><button type="button" id="studentSearchToggle" aria-label="Tìm học sinh"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><input type="search" id="studentSearch" class="search" aria-label="Tìm tên, số điện thoại, phụ huynh, giáo viên" placeholder="Tìm tên, SĐT, phụ huynh…" autocomplete="off" /></div>
             <button class="btn primary" id="addStudentBtn">+ Thêm học sinh</button>
           </div>
           <div id="studentList" class="card-list"></div>
@@ -161,10 +179,9 @@
         <!-- ============ VIEW: GIÁO VIÊN ============ -->
         <section class="view" id="view-teachers" hidden>
           <div class="toolbar">
-            <div class="spacer"></div>
+            <div class="teacher-search"><button type="button" id="teacherSearchToggle" aria-label="Tìm giáo viên"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><input type="search" id="teacherSearch" aria-label="Tìm tên, chuyên môn hoặc email giáo viên" placeholder="Tìm tên, chuyên môn, email…" autocomplete="off" /></div>
             <button class="btn primary" id="addTeacherBtn">+ Thêm giáo viên</button>
           </div>
-          <p class="hint">Thêm giáo viên chỉ cần <b>tên</b>. Khi giáo viên đã đăng ký tài khoản, chọn email của họ ở ô “tài khoản” để gắn — lúc đó họ tự đăng nhập, xem lịch & điểm danh lớp của mình.</p>
           <div id="teacherList" class="card-list"></div>
         </section>
 
@@ -173,11 +190,10 @@
           <div class="toolbar">
             <label class="inline">Từ <input type="text" id="salFrom" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
             <label class="inline">Đến <input type="text" id="salTo" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
-            <button class="btn" id="salMonthBtn">Tháng này</button>
+            <div class="report-month-nav"><button type="button" data-report-month="sal:-1" aria-label="Tháng lương trước">‹</button><button type="button" id="salMonthBtn">Tháng này</button><button type="button" data-report-month="sal:1" aria-label="Tháng lương sau">›</button></div>
             <div class="spacer"></div>
             <button class="btn primary" id="salRun">Tính lương</button>
           </div>
-          <p class="hint">Lương = số buổi đã dạy × <b>đơn giá theo loại lớp</b> (cá nhân / đôi / nhóm). Đặt đơn giá cho từng giáo viên ở mục <b>Giáo viên</b>; giá mặc định ở <b>Cài đặt → Bảng giá</b>.</p>
           <div id="salaryResult"></div>
         </section>
 
@@ -188,7 +204,6 @@
             <div class="spacer"></div>
             <button class="btn" id="tuitionExport">⬇ Xuất CSV</button>
           </div>
-          <p class="hint">Số buổi đã học = số buổi được điểm danh “có mặt”. Học phí thực thu = số buổi đã học × học phí/buổi. Hệ thống tự báo khi học sinh <b>sắp / đã kết thúc khóa</b>.</p>
           <div id="tuitionResult"></div>
         </section>
 
@@ -197,11 +212,10 @@
           <div class="toolbar">
             <label class="inline">Từ <input type="text" id="proFrom" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
             <label class="inline">Đến <input type="text" id="proTo" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" /></label>
-            <button class="btn" id="proMonthBtn">Tháng này</button>
+            <div class="report-month-nav"><button type="button" data-report-month="pro:-1" aria-label="Tháng báo cáo trước">‹</button><button type="button" id="proMonthBtn">Tháng này</button><button type="button" data-report-month="pro:1" aria-label="Tháng báo cáo sau">›</button></div>
             <div class="spacer"></div>
             <button class="btn primary" id="proRun">Tính lãi</button>
           </div>
-          <p class="hint">Lãi = <b>tổng học phí học sinh đóng</b> (theo ngày đóng trong kỳ) − <b>tổng lương trả giáo viên</b> (số buổi đã dạy × đơn giá trong kỳ).</p>
           <div id="profitResult"></div>
         </section>
 
@@ -231,22 +245,29 @@
             <p class="hint">Thiết lập <b>1 lần</b> — khi thêm giáo viên / học sinh mới, lương & học phí sẽ tự điền theo loại lớp (cá nhân / đôi / nhóm). Bạn vẫn sửa lại từng người được.</p>
             <div class="price-list" id="pricingBody"></div>
             <button class="btn primary" id="savePricing" style="margin-top:14px;">Lưu bảng giá</button>
+            <div class="individual-pricing"><h4>Học phí riêng cho học sinh</h4><div class="individual-pricing-row"><select id="pricingStudent" aria-label="Chọn học sinh để điều chỉnh học phí"></select><button type="button" class="btn" id="adjustStudentPricing">Điều chỉnh</button></div><p>Chọn giá riêng hoặc giảm theo % cho từng khóa học.</p></div>
           </div>
 
-          <div class="settings-card admin-only" id="demoCard">
-            <h3>🧪 Chế độ DEMO</h3>
-            <p class="hint">Đang chạy bằng dữ liệu mẫu trên trình duyệt này (chưa cấu hình Supabase). Bạn có thể đặt lại dữ liệu mẫu về ban đầu.</p>
-            <button class="btn danger" id="resetDemo">Đặt lại dữ liệu DEMO</button>
+          <div class="settings-card admin-only" id="courseRuleCard">
+            <h3>📚 Khóa học — cách trừ buổi</h3>
+            <p class="hint">Mặc định cho mọi khóa. Từng khóa vẫn chọn riêng được (Học sinh → 📚 Khóa học). Đủ số buổi thì khóa tự ngắt; buổi sau đó là <b>buổi lẻ</b> cho tới khi mở khóa mới.</p>
+            <div class="field"><select id="courseRuleDefault"></select></div>
+            <button class="btn primary" id="saveCourseRule">Lưu</button>
           </div>
 
-          <div class="settings-card">
-            <h3>ℹ️ Tài khoản đăng nhập demo</h3>
-            <p class="hint" id="demoAccounts"></p>
-          </div>
         </section>
 
       </div><!-- /.content -->
     </div><!-- /.main -->
+
+    <!-- ===== THANH TAB DƯỚI (mobile) ===== -->
+    <nav class="tabbar" id="tabbar" aria-label="Điều hướng chính">
+      <button class="tab" data-view="today"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 9.5h17M8 14h3M8 17h6"/></svg><span>Hôm nay</span></button>
+      <button class="tab" data-view="schedule"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 9.5h17M12 12.5v5M9.5 15h5"/></svg><span>Lịch học</span></button>
+      <button class="tab admin-only" data-view="students"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.8 20c.6-3.6 3.1-5.5 6.2-5.5s5.6 1.9 6.2 5.5M15.5 4.8a3.4 3.4 0 0 1 0 6.4M18 14.8c1.8.6 2.9 2.3 3.2 5.2"/></svg><span>Học sinh</span></button>
+      <button class="tab nonadmin-only" data-view="notify"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg><span>Thông báo</span></button>
+      <button class="tab" id="tabMore"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></svg><span>Quản lý</span></button>
+    </nav>
   </div><!-- /.layout -->
 
   <!-- ===================== AUTH OVERLAY ===================== -->
@@ -313,6 +334,7 @@
           </div>
           <div class="field">
             <label>Học sinh trong lớp</label>
+            <input type="search" id="fStudentSearch" class="chk-search" placeholder="🔍 Tìm học sinh (tên, môn, SĐT)…" autocomplete="off" />
             <div id="fStudents" class="chk-list"></div>
             <div class="field-hint">Tick những học sinh tham gia buổi này — sau đó điểm danh ở trang “Hôm nay”.</div>
           </div>
@@ -379,6 +401,56 @@
       <div class="modal-foot">
         <button class="btn" id="smCancel">Hủy</button>
         <button class="btn primary" id="smSave">Lưu học sinh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: KHÓA HỌC ===================== -->
+  <div id="courseModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="cmTitle">Khóa học</h3>
+        <button class="x" id="cmClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="cmList" class="course-list"></div>
+        <h4 class="block-title" id="cmFormTitle">Mở khóa mới</h4>
+        <div id="cmErr" class="form-err hidden"></div>
+        <form id="courseForm">
+          <input type="hidden" id="cmStudentId" />
+          <input type="hidden" id="cmId" />
+          <div class="field"><label for="cmTotal">Số buổi của khóa *</label>
+            <div class="seg-pick" id="cmTotalPick">
+              <button type="button" data-total="12">12 buổi</button>
+              <button type="button" data-total="24">24 buổi</button>
+              <input id="cmTotal" type="number" min="1" step="1" value="12" aria-label="Số buổi tùy chỉnh" />
+            </div>
+          </div>
+          <div class="fee-adjustment">
+            <div class="field"><label for="cmFeeMode">Cách áp dụng học phí</label><select id="cmFeeMode"><option value="custom">Giá riêng</option><option value="default">Theo bảng giá</option><option value="percent">Giảm theo %</option></select></div>
+            <div class="row-2" id="cmDiscountFields" hidden><div class="field"><label for="cmBaseFee">Giá trước giảm (đ/buổi)</label><input id="cmBaseFee" type="text" inputmode="numeric" autocomplete="off" maxlength="20" value="0" /></div><div class="field"><label for="cmDiscount">Giảm giá (%)</label><input id="cmDiscount" type="number" min="0" max="100" step="0.01" value="0" /></div></div>
+            <div class="fee-preview" id="cmFeePreview" aria-live="polite"></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label for="cmFee">Học phí áp dụng mỗi buổi (đ)</label><input id="cmFee" type="text" inputmode="numeric" autocomplete="off" maxlength="20" value="0" /></div>
+            <div class="field"><label for="cmStart">Bắt đầu từ ngày</label>
+              <div class="date-wrap">
+                <input id="cmStart" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" />
+                <button type="button" class="cal-btn" data-cal="cmStart" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="cmStartNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+          <div class="field"><label for="cmRule">Buổi nào trừ vào khóa</label>
+            <select id="cmRule"></select>
+            <div class="field-hint">Buổi từ ngày bắt đầu trở đi luôn thuộc khóa này. Khóa trước chưa đủ buổi thì coi như ngắt sớm.</div>
+          </div>
+          <div class="field"><label for="cmNote">Ghi chú</label><input id="cmNote" type="text" placeholder="VD: đóng đủ 24 buổi, gia hạn…" /></div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="cmCancel">Đóng</button>
+        <button class="btn primary" id="cmSave">Mở khóa mới</button>
       </div>
     </div>
   </div>
@@ -511,9 +583,9 @@
     <option value="Cờ vua"></option>
   </datalist>
 
-  <div class="toast-wrap" id="toastWrap"></div>
+  <dialog id="pageSearchDialog" aria-labelledby="pageSearchTitle"><div class="dialog-top"><h2 id="pageSearchTitle">Tìm kiếm</h2><button type="button" id="pageSearchClose" aria-label="Đóng tìm kiếm">×</button></div><input type="search" id="pageSearchInput" aria-label="Nhập nội dung tìm kiếm" autocomplete="off" placeholder="Tìm tên, số điện thoại…" /><div id="pageSearchResults" aria-live="polite"></div><button type="button" class="btn" id="pageSearchDone">Xem kết quả</button></dialog><div class="toast-wrap" id="toastWrap"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="vendor/supabase-2.118.0.js"></script>
   <script src="config.js"></script>
   <script src="backend.js"></script>
   <script src="app.js"></script>
