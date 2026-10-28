@@ -396,7 +396,7 @@
     currentUid = user.id;
     const loginId = currentUid;
     try {
-    const profile = await B.ensureProfile(user);
+    const profile = await traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user));
     if (currentUid !== loginId) return;
     myProfile = profile;
     hideAuth();
@@ -491,13 +491,36 @@
   // =====================================================================
   //  TẢI DỮ LIỆU DÙNG CHUNG
   // =====================================================================
+  async function traceDataLoad(label, read, timeoutMs = 15000) {
+    const started = performance.now();
+    let timer;
+    const timeout = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(label + ': máy chủ không phản hồi sau ' + Math.round(timeoutMs / 1000) + ' giây. Hãy thử lại.')), timeoutMs);
+    });
+    console.info('[OPENMUSIC load] start:', label);
+    try {
+      const result = await Promise.race([Promise.resolve().then(read), timeout]);
+      if (result && result.error) throw new Error(label + ': ' + result.error.message);
+      console.info('[OPENMUSIC load] done:', label, Math.round(performance.now() - started) + 'ms');
+      return result;
+    } catch (error) {
+      console.error('[OPENMUSIC load] failed:', label, Math.round(performance.now() - started) + 'ms', error.message);
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+
   async function loadGlobals() {
     const loadUid = currentUid;
     // Start all independent reads together; attendance supplies present counts too.
     const [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes] = await Promise.all([
-      B.listTeachers(), B.listStudents(), isAdmin() ? B.listProfiles() : {data: myProfile ? [myProfile] : []},
-      B.getSettings(), B.teacherStats(), B.listCourses(),
-      isAdmin() ? B.listPayments() : {data: []}, B.listAttendanceWithDates(),
+      traceDataLoad('Giáo viên', () => B.listTeachers()),
+      traceDataLoad('Học sinh', () => B.listStudents()),
+      isAdmin() ? traceDataLoad('Tài khoản', () => B.listProfiles()) : {data: myProfile ? [myProfile] : []},
+      traceDataLoad('Cài đặt', () => B.getSettings()),
+      traceDataLoad('Thống kê giáo viên', () => B.teacherStats()),
+      traceDataLoad('Khóa học', () => B.listCourses()),
+      isAdmin() ? traceDataLoad('Học phí', () => B.listPayments()) : {data: []},
+      traceDataLoad('Lịch sử điểm danh', () => B.listAttendanceWithDates()),
     ]);
     if (currentUid !== loadUid) return;
     const failed = [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes].find(result => result.error);

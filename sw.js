@@ -6,7 +6,7 @@
 //  - Request tới Supabase (khác domain, dữ liệu thật) KHÔNG bao giờ cache.
 //  Đổi số VERSION khi muốn xoá sạch cache cũ trên máy người dùng.
 // =====================================================================
-const VERSION = "om-v5-mobile-stability";
+const VERSION = "om-v6-glass-restored";
 const SHELL = [
   "./",
   "index.html",
@@ -71,4 +71,3 @@ self.addEventListener("fetch", (e) => {
     )
   );
 });
-

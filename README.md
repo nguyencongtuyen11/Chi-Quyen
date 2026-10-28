@@ -171,3 +171,12 @@ Bộ kiểm thử: 30/30 đạt. Chưa đo thời gian tải trên mạng/iPhone
 bỏ mask toàn màn hình và orb blur, dùng SVG trực tiếp cho khóa sol. Vẫn giữ nền ngọc, góc bo, bề mặt trong và viền sáng.
 Không có location.reload/controllerchange reload tự động trong ứng dụng. Cache mới om-v5-mobile-stability.
 Cần xác nhận lại trên iPhone thật; kiểm thử DOM không phát hiện được sự cố GPU/WebKit.
+
+### Khôi phục kính và đo tải dữ liệu
+
+Đã khôi phục blur/mask như trước theo yêu cầu người dùng; bản giảm tải không chứng minh được nguyên nhân crash.
+Mỗi truy vấn khởi động ghi console với tiền tố [OPENMUSIC load], tên nhóm dữ liệu và thời gian (không ghi tài khoản/token/nội dung dữ liệu).
+Quá 15 giây không phản hồi sẽ hiện lỗi có tên nhóm dữ liệu thay vì treo ở Đang tải lịch học mãi.
+Đây là công cụ khoanh vùng lỗi, không phải xác nhận nguyên nhân đã được sửa.
+Đã đạt 31 kiểm thử. Đo HTTP từ máy phát triển: HTML 433ms, app.js 59ms, CSS 55ms, Supabase JS 343ms;
+các số đo không đại diện cho truy vấn đăng nhập hay tốc độ iPhone.

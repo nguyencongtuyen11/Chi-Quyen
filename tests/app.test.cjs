@@ -19,7 +19,7 @@ async function fixture(email='admin@openmusic.vn') {
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
   w.setInterval=()=>0;
   w.eval(fs.readFileSync(path.join(root,'backend.js'),'utf8'));
-  const exposed=['loadGlobals','switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
+  const exposed=['traceDataLoad','loadGlobals','switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
   w.eval(source.replace('document.addEventListener("DOMContentLoaded", init);',`window.__test={${exposed.join(',')}};document.addEventListener("DOMContentLoaded", init);`));
   await settle();
   await w.Backend.signIn(email,'123456');
@@ -110,7 +110,11 @@ test('startup reads payments and attendance while teacher lookup is still pendin
   f.backend.listAttendanceWithDates=()=>{attendanceStarted=true;return att();};
   f.backend.countPresentByStudent=()=>{duplicateCount=true;return {data:{}};};
   const loading=f.api.loadGlobals();
-  assert.equal(paymentsStarted,true);assert.equal(attendanceStarted,true);assert.equal(duplicateCount,false);
+  await Promise.resolve();assert.equal(paymentsStarted,true);assert.equal(attendanceStarted,true);assert.equal(duplicateCount,false);
   finishTeachers(teachers);await loading;
  }finally{f.close();}
+});
+
+test('an unresponsive data read has a named error instead of infinite loading',async()=>{
+ const f=await fixture();try{await assert.rejects(f.api.traceDataLoad('Lịch sử điểm danh',()=>new Promise(()=>{}),10),/Lịch sử điểm danh.*không phản hồi/);}finally{f.close();}
 });
