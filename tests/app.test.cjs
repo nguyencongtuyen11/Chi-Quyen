@@ -19,7 +19,7 @@ async function fixture(email='admin@openmusic.vn') {
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
   w.setInterval=()=>0;
   w.eval(fs.readFileSync(path.join(root,'backend.js'),'utf8'));
-  const exposed=['switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
+  const exposed=['loadGlobals','switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
   w.eval(source.replace('document.addEventListener("DOMContentLoaded", init);',`window.__test={${exposed.join(',')}};document.addEventListener("DOMContentLoaded", init);`));
   await settle();
   await w.Backend.signIn(email,'123456');
@@ -97,4 +97,20 @@ test('salary does not present a zero wage after attendance lookup fails',async()
 
 test('retrying a partially saved schedule updates its existing row',async()=>{
  const f=await fixture();try{await f.api.openScheduleModal(null,'2026-10-28','sang');f.doc.querySelector('#fSubject').value='Piano';f.doc.querySelector('#fOwner').value='t-lan';f.doc.querySelector('#fStart').value='10:00';f.doc.querySelector('#fEnd').value='11:00';f.doc.querySelector('#fStudents input').checked=true;const original=f.backend.setAttendance;f.backend.setAttendance=async()=>({error:{message:'Attendance write failed'}});await f.api.saveSchedule();const savedId=f.doc.querySelector('#schedId').value;assert.ok(savedId);f.backend.setAttendance=original;await f.api.saveSchedule();const rows=(await f.backend.listSchedules({from:'2026-10-28',to:'2026-10-28'})).data;assert.equal(rows.filter(s=>s.start_time==='10:00').length,1);assert.equal(f.doc.querySelector('#modal').classList.contains('hidden'),true);}finally{f.close();}
+});
+
+
+test('startup reads payments and attendance while teacher lookup is still pending',async()=>{
+ const f=await fixture();try{
+  let finishTeachers; const original=f.backend.listTeachers.bind(f.backend); const teachers=await original();
+  f.backend.listTeachers=()=>new Promise(resolve=>{finishTeachers=resolve;});
+  let paymentsStarted=false,attendanceStarted=false,duplicateCount=false;
+  const pay=f.backend.listPayments.bind(f.backend),att=f.backend.listAttendanceWithDates.bind(f.backend);
+  f.backend.listPayments=()=>{paymentsStarted=true;return pay();};
+  f.backend.listAttendanceWithDates=()=>{attendanceStarted=true;return att();};
+  f.backend.countPresentByStudent=()=>{duplicateCount=true;return {data:{}};};
+  const loading=f.api.loadGlobals();
+  assert.equal(paymentsStarted,true);assert.equal(attendanceStarted,true);assert.equal(duplicateCount,false);
+  finishTeachers(teachers);await loading;
+ }finally{f.close();}
 });

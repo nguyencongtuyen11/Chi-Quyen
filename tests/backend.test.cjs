@@ -37,3 +37,12 @@ test('configured production fails closed if the Supabase client cannot load',()=
  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../backend.js'),'utf8'),context);
  assert.equal(context.window.Backend.mode,'unavailable');
 });
+
+test('auth consumer starts after Supabase releases its callback',()=>{
+ let listener; const queued=[],events=[];
+ const context={window:{APP_CONFIG:{SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'},supabase:{createClient:()=>({auth:{onAuthStateChange(cb){listener=cb;}}})}},location:{search:''},localStorage:{getItem:()=>null},URLSearchParams,setTimeout:cb=>queued.push(cb)};
+ vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../backend.js'),'utf8'),context);
+ context.window.Backend.onAuthChange((event,user)=>events.push({event,user}));
+ listener('SIGNED_IN',{user:{id:'teacher'}});assert.equal(events.length,0);assert.equal(queued.length,1);
+ queued.shift()();assert.equal(events[0].event,'SIGNED_IN');assert.equal(events[0].user.id,'teacher');
+});

@@ -395,11 +395,14 @@
     if (currentUid === user.id) return;
     currentUid = user.id;
     const loginId = currentUid;
+    try {
     const profile = await B.ensureProfile(user);
     if (currentUid !== loginId) return;
     myProfile = profile;
     hideAuth();
     $("app").classList.remove("hidden");
+    applyRoleUI();
+    $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
 
     const name = (myProfile && myProfile.full_name) || user.email;
     $("accName").textContent = name;
@@ -412,6 +415,13 @@
     initSettingsUI();
     switchView("today");
     startReminderLoop();
+    } catch (error) {
+      if (currentUid !== loginId) return;
+      currentUid = null;
+      $("app").classList.add("hidden");
+      showAuth(); setAuthMode('login');
+      authErr('Không thể tải dữ liệu: ' + (error.message || error));
+    }
   }
 
   function onSignedOut() {
@@ -483,9 +493,15 @@
   // =====================================================================
   async function loadGlobals() {
     const loadUid = currentUid;
-    const [tRes, sRes, pRes, cRes, setRes, tsRes, coRes] = await Promise.all([
-      B.listTeachers(), B.listStudents(), B.listProfiles(), B.countPresentByStudent(), B.getSettings(), B.teacherStats(), B.listCourses(),
+    // Start all independent reads together; attendance supplies present counts too.
+    const [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes] = await Promise.all([
+      B.listTeachers(), B.listStudents(), isAdmin() ? B.listProfiles() : {data: myProfile ? [myProfile] : []},
+      B.getSettings(), B.teacherStats(), B.listCourses(),
+      isAdmin() ? B.listPayments() : {data: []}, B.listAttendanceWithDates(),
     ]);
+    if (currentUid !== loadUid) return;
+    const failed = [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes].find(result => result.error);
+    if (failed) throw failed.error;
     if (currentUid !== loadUid) return;
     coursesByStudent = {};
     (coRes.data || []).forEach((c) => (coursesByStudent[c.student_id] || (coursesByStudent[c.student_id] = [])).push(c));
@@ -498,13 +514,13 @@
     studentsById = {}; students.forEach((s) => (studentsById[s.id] = s));
     profilesList = pRes.data || [];
     profilesById = {}; profilesList.forEach((p) => (profilesById[p.id] = p));
-    presentByStudent = cRes.data || {};
+    presentByStudent = {};
+    (attRes.data || []).forEach(a => { if (a.present === true) presentByStudent[a.student_id] = (presentByStudent[a.student_id] || 0) + 1; });
     myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
 
     allPayments = []; paidByStudent = {};
     attRowsByStudent = {}; courseInfo = {};
     // điểm danh kèm ngày -> chia buổi vào khóa (giáo viên chỉ đọc được lớp mình dạy -> tính trên các buổi đó)
-    const [payRes, attRes] = await Promise.all([isAdmin() ? B.listPayments() : { data: [] }, B.listAttendanceWithDates()]);
     if (currentUid !== loadUid) return;
     if (isAdmin()) {
       allPayments = payRes.data || [];

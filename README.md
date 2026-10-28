@@ -154,3 +154,12 @@ Giữ status bar style=default để hệ thống chọn chữ phù hợp với 
 
 Đã đạt 28 kiểm thử, gồm 5 trường hợp màu theme khi khởi động. Chưa xác minh trên iPhone vật lý.
 Sau deploy, đóng/mở lại PWA; nếu màu thanh trạng thái vẫn giữ bản cài cũ, thêm lại biểu tượng từ Safari.
+
+### Tốc độ mở ứng dụng
+
+Bỏ yêu cầu font Google khỏi đường tải ban đầu (iPhone dùng font hệ thống).
+Các truy vấn dữ liệu độc lập chạy trong cùng một đợt thay vì chờ hai đợt nối tiếp;
+đếm có mặt tái sử dụng dữ liệu điểm danh, không truy vấn lại bảng attendance.
+Callback xác thực được chuyển sang lượt event loop kế tiếp trước khi tải hồ sơ,
+tránh giữ khóa Supabase Auth khi bắt đầu truy vấn. Hiện trạng thái đang tải thay vì vùng lịch trống.
+Bộ kiểm thử: 30/30 đạt. Chưa đo thời gian tải trên mạng/iPhone thực tế của người dùng.

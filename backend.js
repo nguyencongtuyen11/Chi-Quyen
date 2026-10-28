@@ -63,9 +63,10 @@
       async getUser() { const { data } = await sb.auth.getSession(); return data && data.session ? data.session.user : null; },
       onAuthChange(cb) {
         sb.auth.onAuthStateChange((ev, session) => {
-          if (ev === "PASSWORD_RECOVERY") return cb("PASSWORD_RECOVERY", session ? session.user : null);
-          if (session && session.user) cb("SIGNED_IN", session.user);
-          else cb("SIGNED_OUT", null);
+          // Leave the auth client's lock before any consumer starts database calls.
+          const event = ev === 'PASSWORD_RECOVERY' ? ev : session && session.user ? 'SIGNED_IN' : 'SIGNED_OUT';
+          const authUser = session ? session.user : null;
+          setTimeout(() => cb(event, authUser), 0);
         });
       },
       signIn(email, password) { return sb.auth.signInWithPassword({ email, password }); },
