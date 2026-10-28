@@ -6,7 +6,7 @@
 //  - Request tới Supabase (khác domain, dữ liệu thật) KHÔNG bao giờ cache.
 //  Đổi số VERSION khi muốn xoá sạch cache cũ trên máy người dùng.
 // =====================================================================
-const VERSION = "om-v6-glass-restored";
+const VERSION = "om-v7-lower-tabbar";
 const SHELL = [
   "./",
   "index.html",
