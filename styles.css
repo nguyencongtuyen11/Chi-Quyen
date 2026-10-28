@@ -107,7 +107,7 @@ svg { display: block; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {
   position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 10px;
-  padding: 12px max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left));
+  padding: calc(12px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left));
   background: var(--glass); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur));
   border-bottom: 1px solid var(--border);
 }
@@ -463,7 +463,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .demo-hint { margin-top: 18px; padding: 11px 13px; border-radius: 11px; background: var(--sang-bg); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); color: var(--warn); font-size: 12px; text-align: left; line-height: 1.6; }
 
 /* ===== TOAST ===== */
-.toast-wrap { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 120; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.toast-wrap { position: fixed; bottom: calc(22px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 120; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .toast { background: #0f172a; color: #fff; padding: 12px 18px; border-radius: 12px; box-shadow: var(--shadow); font-size: 14px; font-weight: 500; animation: slideup .22s ease; max-width: 90vw; }
 .toast.ok { background: var(--good); color: #06210f; }
 .toast.err { background: var(--bad); color: #2a0608; }
@@ -475,7 +475,8 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 /* Tablet & mobile: sidebar thành drawer trượt */
 @media (max-width: 900px) {
   .only-mobile { display: grid; }
-  .sidebar { position: fixed; top: 0; left: 0; height: 100vh; transform: translateX(-100%); transition: transform .25s ease; box-shadow: var(--shadow); }
+  .sidebar { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; transform: translateX(-100%); transition: transform .25s ease; box-shadow: var(--shadow);
+    padding-top: calc(18px + env(safe-area-inset-top)); padding-bottom: calc(18px + env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); }
   .sidebar.open { transform: none; }
   .main { width: 100%; }
 }
@@ -505,4 +506,19 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
   .cc-tpresent { order: 2; margin-left: auto; }
   .cc-info { order: 3; flex: 1 1 100%; }
   .reminder-bar { margin: 12px 12px 0; }
+  .modal-backdrop { padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+  .modal { max-height: 100%; }
 }
+
+/* ===== PWA: hướng dẫn cài lên iPhone (chỉ hiện trong Safari, chưa cài) ===== */
+.ios-install {
+  position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 110;
+  display: flex; align-items: center; gap: 11px; padding: 11px 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  animation: slideup .25s ease;
+}
+.ios-install img { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+.ios-install .ii-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.ios-install .ii-text > b { display: block; color: var(--text); font-size: 14px; }
+.ios-install .ii-share { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; color: var(--primary); }
+.ios-install .ii-x { background: none; border: none; color: var(--muted); font-size: 24px; line-height: 1; padding: 4px 6px; cursor: pointer; }

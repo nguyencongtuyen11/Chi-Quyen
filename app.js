@@ -1840,5 +1840,41 @@
     });
   }
 
+  // ===== PWA =====
+  //  Service worker (sw.js): cài app ra màn hình chính + mở được khi mất mạng.
+  //  Bỏ qua trên localhost để khi sửa code không bị dính cache cũ.
+  function setupPWA() {
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    if ("serviceWorker" in navigator && location.protocol === "https:" && !isLocal) {
+      navigator.serviceWorker.register("sw.js").catch((err) => console.warn("SW:", err));
+    }
+    showIosInstallHint();
+  }
+
+  //  iPhone/iPad không có nút "Cài đặt" tự động như Android → hiện hướng dẫn
+  //  "Chia sẻ → Thêm vào MH chính" khi mở bằng Safari (chưa cài). Bấm × là ẩn hẳn.
+  function showIosInstallHint() {
+    const ua = navigator.userAgent;
+    const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isSafari = /safari/i.test(ua) && !/crios|fxios|edgios|opios/i.test(ua);
+    const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+    let dismissed = false;
+    try { dismissed = localStorage.getItem("om-ios-hint") === "1"; } catch (_) {}
+    if (!isIOS || !isSafari || standalone || dismissed) return;
+
+    const bar = document.createElement("div");
+    bar.className = "ios-install";
+    bar.innerHTML = `<img src="apple-touch-icon.png" alt="" />
+      <div class="ii-text"><b>Cài OPENMUSIC lên iPhone</b>
+        <span>Nhấn <svg class="ii-share" viewBox="0 0 24 24" aria-label="Chia sẻ"><path d="M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> rồi chọn <b>“Thêm vào MH chính”</b></span></div>
+      <button class="ii-x" aria-label="Đóng">×</button>`;
+    bar.querySelector(".ii-x").addEventListener("click", () => {
+      bar.remove();
+      try { localStorage.setItem("om-ios-hint", "1"); } catch (_) {}
+    });
+    document.body.appendChild(bar);
+  }
+
   document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", setupPWA);
 })();

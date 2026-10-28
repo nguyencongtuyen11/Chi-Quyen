@@ -2,6 +2,8 @@
   "name": "OPENMUSIC — Quản lý Trung tâm",
   "short_name": "OPENMUSIC",
   "description": "Thời khóa biểu • Điểm danh • Lương • Học phí",
+  "id": "./",
+  "lang": "vi",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
