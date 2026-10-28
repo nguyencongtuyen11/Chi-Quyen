@@ -1026,3 +1026,27 @@ body, .layout { min-height: 100vh; min-height: 100dvh; }
 }
 /* Keep the decorative layer above the body paint while remaining behind UI. */
 body { isolation: isolate; }
+
+/* Mobile stability: avoid nested GPU blur surfaces on iOS/WebKit.
+   Glass appearance uses translucent paint and borders instead of live blurring. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  *, *::before, *::after, dialog::backdrop {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+  }
+  .ambient { -webkit-mask-image: none; mask-image: none;
+    background: linear-gradient(to bottom, var(--bg) 0, var(--bg) 80px, var(--amb-2) 50%, var(--amb-3) 100%); }
+  .ambient .orb { display: none; }
+  .ambient .treble-clef { -webkit-mask: none; mask: none;
+    background: transparent url("treble-clef.svg") center / contain no-repeat; opacity: .045; }
+  [data-theme="dark"] .ambient .treble-clef { background: transparent url("treble-clef.svg") center / contain no-repeat; opacity: .12; }
+  .logo::before { display: none; mix-blend-mode: normal; }
+  .auth-card, .class-card, .info-card, .settings-card, .week-strip,
+  .schedule-calendar, .day-block, .tabbar, .modal, .sidebar {
+    background-color: color-mix(in srgb, var(--card-solid) 94%, transparent);
+  }
+  .view, .auth-card .logo.big, .auth-card .auth-content, .modal {
+    animation: none;
+  }
+}

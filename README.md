@@ -163,3 +163,11 @@ Các truy vấn dữ liệu độc lập chạy trong cùng một đợt thay v�
 Callback xác thực được chuyển sang lượt event loop kế tiếp trước khi tải hồ sơ,
 tránh giữ khóa Supabase Auth khi bắt đầu truy vấn. Hiện trạng thái đang tải thay vì vùng lịch trống.
 Bộ kiểm thử: 30/30 đạt. Chưa đo thời gian tải trên mạng/iPhone thực tế của người dùng.
+
+### Khắc phục Safari tải lại liên tục
+
+Ảnh lỗi thiết bị cho thấy trang bị Safari dừng sau nhiều lần tải lại; chưa có crash log thiết bị để xác định nguyên nhân.
+Đã áp dụng đường hiển thị nhẹ cho màn hình <=900px và thiết bị cảm ứng: bỏ filter/backdrop-filter trên các lớp lồng nhau,
+bỏ mask toàn màn hình và orb blur, dùng SVG trực tiếp cho khóa sol. Vẫn giữ nền ngọc, góc bo, bề mặt trong và viền sáng.
+Không có location.reload/controllerchange reload tự động trong ứng dụng. Cache mới om-v5-mobile-stability.
+Cần xác nhận lại trên iPhone thật; kiểm thử DOM không phát hiện được sự cố GPU/WebKit.
