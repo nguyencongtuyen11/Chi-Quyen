@@ -315,7 +315,16 @@
   let authMode = "login";
   const AUTH_LABEL = { login: "Đăng nhập", signup: "Đăng ký", forgot: "Gửi liên kết đặt lại", reset: "Đổi mật khẩu" };
 
-  function showAuth() { $("authOverlay").hidden = false; }
+  // Màn chờ nốt nhạc: ẩn khi đã có màn hình để xem (đăng nhập, hoặc lịch hôm nay đã tải xong).
+  // Giữ tối thiểu ~1,1s để nốt nhạc kịp bay vào, tránh chớp khi tải nhanh; tự ẩn sau 15s phòng treo.
+  const splashStart = performance.now();
+  function hideSplash() {
+    const el = $("splash"); if (!el || el.classList.contains("done")) return;
+    const wait = reduceMotion() ? 0 : Math.max(0, 1100 - (performance.now() - splashStart));
+    setTimeout(() => { el.classList.add("done"); setTimeout(() => el.remove(), 600); }, wait);
+  }
+  setTimeout(hideSplash, 15000);
+  function showAuth() { $("authOverlay").hidden = false; hideSplash(); }
   function hideAuth() { $("authOverlay").hidden = true; }
   function authErr(msg, ok) { const e = $("authErr"); e.textContent = msg || ""; e.style.color = ok ? "var(--good)" : "var(--bad)"; }
   function authBusy(on, txt) { const b = $("authPrimary"); b.disabled = on; b.textContent = on ? txt : AUTH_LABEL[authMode]; }
@@ -420,6 +429,7 @@
     applyRoleUI();
     initSettingsUI();
     switchView("today");
+    hideSplash();
     startReminderLoop();
     refreshDevicePush();
     } catch (error) {
@@ -455,6 +465,7 @@
     const admin = isAdmin();
     document.querySelectorAll(".admin-only").forEach((el) => { el.hidden = !admin; });
     document.querySelectorAll(".nonadmin-only").forEach((el) => { el.hidden = admin; });
+    moveTabPill(false);   // số nút trên thanh tab đổi theo vai trò -> đặt lại viên nền
     $("accCaret").hidden = true;
     $("accountBtn").classList.add("clickable");
     $("accountBtn").setAttribute("aria-label", "Tài khoản và đăng xuất");
@@ -583,12 +594,46 @@
   // =====================================================================
   //  ROUTER
   // =====================================================================
+  // ===== Hiệu ứng thanh tab kiểu iOS: viên nền "liquid" trượt + giãn như giọt nước rồi nảy về nút mới =====
+  const reduceMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let pillAnim = null;
+  function moveTabPill(animate) {
+    const bar = $("tabbar"), pill = $("tabPill"), tab = bar && bar.querySelector(".tab.active:not([hidden])");
+    if (!pill || !tab || !bar.offsetWidth) { if (pill) pill.style.opacity = "0"; return; }
+    const br = bar.getBoundingClientRect(), tr = tab.getBoundingClientRect();
+    const x = tr.left - br.left - bar.clientLeft, w = tr.width;
+    const from = pill.dataset.x != null ? { x: Number(pill.dataset.x), w: Number(pill.dataset.w) } : null;
+    pill.dataset.x = x; pill.dataset.w = w;
+    pill.style.opacity = "1"; bar.classList.add("pill-on");
+    pill.style.width = w + "px";
+    pill.style.transform = `translateX(${x}px)`;
+    if (!animate || !from || from.x === x || reduceMotion() || !pill.animate) return;
+    if (pillAnim) pillAnim.cancel();
+    // giữa đường: viên nền phủ cả 2 nút (giãn ngang, dẹt xuống) rồi co về nút mới với độ nảy
+    const left = Math.min(from.x, x), span = Math.max(from.x + from.w, x + w) - left;
+    // easing riêng từng pha (giãn ra → co về, vượt nhẹ → nảy về) để pha "giọt nước" đủ lâu cho mắt thấy
+    pillAnim = pill.animate([
+      { transform: `translateX(${from.x}px) scale(1, 1)`, width: from.w + "px", easing: "cubic-bezier(.45,0,.25,1)" },
+      { transform: `translateX(${left}px) scale(1, .86)`, width: span + "px", offset: .4, easing: "cubic-bezier(.3,0,.2,1)" },
+      { transform: `translateX(${x - 3}px) scale(1.04, .98)`, width: (w + 6) + "px", offset: .76, easing: "cubic-bezier(.3,0,.3,1)" },
+      { transform: `translateX(${x}px) scale(1, 1)`, width: w + "px" },
+    ], { duration: 560, easing: "linear" });
+    const ic = tab.querySelector("svg");
+    if (ic && ic.animate) ic.animate([{ transform: "scale(1)" }, { transform: "scale(.82)", offset: .3 }, { transform: "scale(1.12)", offset: .7 }, { transform: "scale(1)" }], { duration: 460, easing: "ease-out" });
+  }
+  window.addEventListener("resize", () => moveTabPill(false));
+
   function switchView(view) {
+    const changed = currentView !== view;
     currentView = view;
     document.querySelectorAll(".menu-item, .tab[data-view]").forEach((b) => b.classList.toggle("active", b.getAttribute("data-view") === view));
     // các mục không có trên thanh tab (Giáo viên, Lương…) -> sáng nút "Quản lý"
     $("tabMore").classList.toggle("active", !document.querySelector(`.tab[data-view="${view}"]:not([hidden])`));
-    document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
+    moveTabPill(changed);
+    // đổi trang: mờ trang cũ, trượt nhẹ trang mới lên (View Transitions — iOS 18+; máy cũ đổi ngay)
+    const swap = () => document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
+    if (changed && document.startViewTransition && !reduceMotion()) document.startViewTransition(swap);
+    else swap();
     $("pageTitle").textContent = PAGE_TITLE[view] || "";
     $("heroTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
     $("topViewTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
@@ -637,7 +682,6 @@
     $("todayTitle").textContent = `${DOW[attDate.getDay()]}, ${attDate.getDate()} tháng ${attDate.getMonth() + 1}`;
     $("todayDate").textContent = "";
     $("attDatePicker").value = dmy(attDate);
-    $("migrationBanner").hidden = !(MIGRATION_MODE && ymd(attDate) < ymd(startOfToday()));
     const tf = scheduleTeacherFilter();
     if (tf === "__none__") {
       renderWeekStrip([]);

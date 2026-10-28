@@ -674,6 +674,13 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
   .tab.active { color: var(--primary); font-weight: 650; background: linear-gradient(145deg, rgba(255,255,255,.75), color-mix(in srgb, var(--primary) 10%, rgba(255,255,255,.5)));
     box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(66,108,89,.08); }
   [data-theme="dark"] .tab.active { background: rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+  /* viên nền "liquid" trượt giữa các nút (JS: moveTabPill) — nút active trong suốt để lộ viên nền */
+  .tab-pill { position: absolute; top: 7px; bottom: 7px; left: 0; width: 0; border-radius: 27px; pointer-events: none; opacity: 0; z-index: 0;
+    background: linear-gradient(145deg, rgba(255,255,255,.8), color-mix(in srgb, var(--primary) 12%, rgba(255,255,255,.5)));
+    box-shadow: inset 0 1px 0 #fff, 0 3px 10px rgba(66,108,89,.12); transform-origin: center; will-change: transform, width; }
+  [data-theme="dark"] .tab-pill { background: rgba(255,255,255,.1); box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+  .tabbar.pill-on .tab.active { background: none; box-shadow: none; }
+  .tab { position: relative; z-index: 1; }
   .toast-wrap { bottom: calc(96px + env(safe-area-inset-bottom)); }
   .ios-install { bottom: calc(94px + env(safe-area-inset-bottom)); }
   .sidebar { background: var(--card-solid); }
@@ -1028,3 +1035,47 @@ body, .layout { min-height: 100vh; min-height: 100dvh; }
 body { isolation: isolate; }
 
 .push-controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+
+/* ===== Đổi trang mượt (View Transitions): trang cũ mờ đi, trang mới trượt nhẹ lên; thanh tab đứng yên ===== */
+@media (prefers-reduced-motion: no-preference) {
+  .content { view-transition-name: om-page; }
+  .tabbar { view-transition-name: om-tabbar; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  ::view-transition-group(om-tabbar), ::view-transition-old(om-tabbar), ::view-transition-new(om-tabbar) { animation: none; }
+  ::view-transition-old(om-tabbar) { display: none; }
+  ::view-transition-group(om-page) { animation-duration: .34s; }
+  ::view-transition-old(om-page) { animation: omPageOut .16s ease-in both; }
+  ::view-transition-new(om-page) { animation: omPageIn .34s cubic-bezier(.2,.8,.2,1) both; }
+}
+@keyframes omPageOut { to { opacity: 0; transform: scale(.985); } }
+@keyframes omPageIn { from { opacity: 0; transform: translateY(14px) scale(.99); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* ===== MÀN CHỜ: nốt nhạc bay vào quanh logo ===== */
+.splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; align-content: center; gap: 26px;
+  background: linear-gradient(145deg, var(--amb-1) 0%, var(--amb-2) 45%, var(--amb-3) 100%); overflow: hidden;
+  transition: opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1), filter .45s ease; }
+.splash.done { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
+.sp-stage { position: relative; width: 120px; height: 120px; }
+.sp-logo { position: absolute; inset: 0; width: 120px; height: 120px; border-radius: 30px; box-shadow: 0 16px 40px color-mix(in srgb, var(--primary) 30%, transparent);
+  animation: spLogo .8s cubic-bezier(.34,1.56,.64,1) .45s both, spPulse 1.8s ease-in-out 1.3s infinite; }
+.sp-stage i { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; display: grid; place-items: center;
+  font-style: normal; font-size: 30px; line-height: 1; color: var(--primary); text-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+  animation: spNoteIn .95s cubic-bezier(.2,.85,.25,1) calc(var(--i) * 80ms) both, spFloat 2.4s ease-in-out calc(1s + var(--i) * 120ms) infinite; }
+.sp-name { font-size: 15px; font-weight: 800; letter-spacing: 4px; color: var(--text); animation: spName .6s ease .9s both; }
+.sp-name span { color: var(--primary); }
+@keyframes spNoteIn {
+  0% { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(calc(var(--r) * 4)) scale(.5); }
+  60% { opacity: 1; }
+  100% { opacity: .9; transform: translate(var(--ex), var(--ey)) rotate(var(--r)) scale(1); }
+}
+@keyframes spFloat {
+  0%, 100% { transform: translate(var(--ex), var(--ey)) rotate(var(--r)); }
+  50% { transform: translate(var(--ex), calc(var(--ey) - 8px)) rotate(calc(var(--r) * -.5)); }
+}
+@keyframes spLogo { from { opacity: 0; transform: scale(.4) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes spPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes spName { from { opacity: 0; transform: translateY(8px); letter-spacing: 8px; } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sp-stage i, .sp-logo, .sp-name { animation: none; }
+  .sp-stage i { transform: translate(var(--ex), var(--ey)); opacity: .9; }
+}

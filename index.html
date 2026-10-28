@@ -31,6 +31,19 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Màn chờ lúc mở app: nốt nhạc bay vào quanh logo trong khi tải dữ liệu (app.js: hideSplash) -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <div class="sp-stage">
+      <i style="--i:0;--sx:-46vw;--sy:-38vh;--ex:-92px;--ey:-64px;--r:-30deg">♪</i>
+      <i style="--i:1;--sx:48vw;--sy:-30vh;--ex:88px;--ey:-72px;--r:24deg">♫</i>
+      <i style="--i:2;--sx:-50vw;--sy:18vh;--ex:-112px;--ey:18px;--r:-18deg">♬</i>
+      <i style="--i:3;--sx:50vw;--sy:26vh;--ex:110px;--ey:10px;--r:30deg">♩</i>
+      <i style="--i:4;--sx:-20vw;--sy:46vh;--ex:-30px;--ey:-112px;--r:-40deg">♫</i>
+      <i style="--i:5;--sx:24vw;--sy:-48vh;--ex:42px;--ey:-104px;--r:16deg">♪</i>
+      <img class="sp-logo" src="logo-icon.png" alt="" />
+    </div>
+    <div class="sp-name">OPEN<span>MUSIC</span></div>
+  </div>
 
   <!-- Nền Liquid Glass (các quầng màu mờ phía sau lớp kính) -->
   <div class="ambient" aria-hidden="true"><i class="orb orb-a"></i><i class="orb orb-b"></i><i class="orb orb-c"></i><i class="treble-clef">𝄞</i></div>
@@ -122,7 +135,6 @@
           </div>
           <input type="hidden" id="attDatePicker" />
           <input type="date" id="attDatePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
-          <div class="migration-banner" id="migrationBanner" hidden>🛠️ Đang mở điểm danh cho các buổi <b>quá khứ</b> (chế độ migration dữ liệu).</div>
           <div class="view-head">
             <div>
               <h3 id="todayTitle">Lớp học hôm nay</h3>
@@ -271,6 +283,7 @@
 
     <!-- ===== THANH TAB DƯỚI (mobile) ===== -->
     <nav class="tabbar" id="tabbar" aria-label="Điều hướng chính">
+      <span class="tab-pill" id="tabPill" aria-hidden="true"></span>
       <button class="tab" data-view="today"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 9.5h17M8 14h3M8 17h6"/></svg><span>Hôm nay</span></button>
       <button class="tab" data-view="schedule"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 9.5h17M12 12.5v5M9.5 15h5"/></svg><span>Lịch học</span></button>
       <button class="tab admin-only" data-view="students"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.8 20c.6-3.6 3.1-5.5 6.2-5.5s5.6 1.9 6.2 5.5M15.5 4.8a3.4 3.4 0 0 1 0 6.4M18 14.8c1.8.6 2.9 2.3 3.2 5.2"/></svg><span>Học sinh</span></button>
