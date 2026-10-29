@@ -84,6 +84,15 @@ const assets = path.join(centerDir, "assets");
 let nAssets = 0;
 if (fs.existsSync(assets)) for (const f of fs.readdirSync(assets)) { fs.copyFileSync(path.join(assets, f), path.join(out, f)); nAssets++; }
 
+// Gắn phiên bản vào đường dẫn ảnh logo/icon (logo-icon.png -> logo-icon.png?v=<brandTag>): máy đã lưu ảnh cũ
+// (bộ nhớ app/service worker cũ, cache trình duyệt) buộc phải tải ảnh mới vì đường dẫn đã khác.
+const iconNames = ["logo-icon", "logo-192", "logo-512", "apple-touch-icon", "favicon", "logo-wordmark"];
+const iconRe = new RegExp(`(?<![\\w.-])(${iconNames.join("|")})\\.png(?![?\\w])`, "g");   // cả "/logo-192.png" (icon thông báo đẩy)
+for (const f of ["index.html", "app.js", "sw.js", "manifest.webmanifest"]) {
+  const p = path.join(out, f);
+  fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(iconRe, `$1.png?v=${brandTag}`));
+}
+
 // kiểm tra: không còn sót tên OPENMUSIC trong phần người dùng nhìn thấy
 const left = brandFiles.filter((f) => /OPENMUSIC/.test(fs.readFileSync(path.join(out, f), "utf8").replace(/\[OPENMUSIC load\]/g, "")));
 console.log(`Đã build "${center.fullName}" (${id}) -> dist/: ${files.length} file, ${nAssets} ảnh riêng${left.length ? " — CÒN SÓT OPENMUSIC: " + left.join(", ") : ""}`);
