@@ -38,6 +38,7 @@ const swaps = [
   ["Quản lý Trung tâm OPENMUSIC", "Quản lý " + center.fullName],
   ["OPEN<span>MUSIC</span>", brandHtml],
   ["<p>Trung tâm Nghệ thuật</p>", `<p>${center.tagline || center.fullName}</p>`],
+  ['placeholder="email@openmusic.vn"', `placeholder="${center.emailPlaceholder || "email@gmail.com"}"`],
   ["OpenMusic", center.shortName],
   ["OPENMUSIC", center.shortName],
 ];
