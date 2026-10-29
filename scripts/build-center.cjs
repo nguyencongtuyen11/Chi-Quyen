@@ -43,11 +43,16 @@ const swaps = [
   ["OPENMUSIC", center.shortName],
 ];
 const brandFiles = ["index.html", "app.js", "sw.js", "manifest.webmanifest"];
+// dấu vân tay của cấu hình + ảnh riêng: đổi logo/tên -> đổi VERSION của sw.js -> máy người dùng bỏ ảnh cũ trong cache
+const assetsDir = path.join(centerDir, "assets");
+const hash = require("node:crypto").createHash("sha1").update(JSON.stringify(center));
+if (fs.existsSync(assetsDir)) for (const f of fs.readdirSync(assetsDir).sort()) hash.update(f).update(fs.readFileSync(path.join(assetsDir, f)));
+const brandTag = hash.digest("hex").slice(0, 8);
 for (const f of brandFiles) {
   const p = path.join(out, f);
   let s = fs.readFileSync(p, "utf8");
   for (const [a, b] of swaps) s = s.split(a).join(b);
-  if (f === "sw.js") s = s.replace(/const VERSION = "([^"]+)"/, (_, v) => `const VERSION = "${id}-${v}"`);
+  if (f === "sw.js") s = s.replace(/const VERSION = "([^"]+)"/, (_, v) => `const VERSION = "${id}-${brandTag}-${v}"`);
   if (f === "manifest.webmanifest" && center.themeColor) s = s.replace(/"(background_color|theme_color)":\s*"#[0-9a-fA-F]{3,8}"/g, `"$1": "${center.themeColor}"`);
   fs.writeFileSync(p, s);
 }
