@@ -22,3 +22,6 @@ supabase/.temp/
 
 # Private push provisioning files
 supabase/*.local.sql
+
+# Thư mục build web theo trung tâm (scripts/build-center.cjs)
+dist/

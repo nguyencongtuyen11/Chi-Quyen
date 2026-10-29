@@ -4,6 +4,9 @@ import {reminderFor,trialReminderFor,validateSubscription} from '../_shared/push
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-cron-secret','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const reply = (body:unknown,status=200) => Response.json(body,{status,headers});
 function required(name:string){const value=Deno.env.get(name);if(!value)throw new Error('Thiếu cấu hình máy chủ: '+name);return value;}
+// Tên trung tâm trong tiêu đề thông báo (mỗi dự án Supabase đặt secret BRAND_NAME; mặc định OPENMUSIC)
+const brand=()=>Deno.env.get('BRAND_NAME')||'OPENMUSIC';
+const branded=(p:any)=>JSON.stringify({...p,title:String(p.title||'OPENMUSIC').replace('OPENMUSIC',brand())});
 function checked(result:any){if(result.error)throw result.error;return result.data;}
 async function pages(db:any,table:string,columns='*') {const rows=[];for(let offset=0;;offset+=1000){const page=checked(await db.from(table).select(columns).order('id').range(offset,offset+999));rows.push(...page);if(page.length<1000)return rows;}}
 Deno.serve(async req=>{
@@ -33,7 +36,7 @@ Deno.serve(async req=>{
     await Promise.all(jobs.slice(offset,Math.min(offset+5,50)).map(async ({schedule,sub,payload})=>{
      if(!checked(await db.rpc('claim_push_delivery',{p_sub:sub.id,p_schedule:schedule.id,p_start:payload.start_at})))return;
      try{
-      await webpush.sendNotification({endpoint:sub.endpoint,keys:sub.keys},JSON.stringify(payload),{TTL:300,timeout:8000,urgency:'high'});
+      await webpush.sendNotification({endpoint:sub.endpoint,keys:sub.keys},branded(payload),{TTL:300,timeout:8000,urgency:'high'});
       checked(await db.from('push_deliveries').update({status:'sent',sent_at:new Date().toISOString()}).eq('subscription_id',sub.id).eq('schedule_id',schedule.id).eq('start_at',payload.start_at));sent++;
      }catch(error:any){
       failed++;
@@ -57,7 +60,7 @@ Deno.serve(async req=>{
     for(const {trial,sub,payload} of trialJobs.slice(0,20)){
      if(!checked(await db.rpc('claim_push_trial_delivery',{p_sub:sub.id,p_trial:trial.id,p_start:payload.start_at})))continue;
      try{
-      await webpush.sendNotification({endpoint:sub.endpoint,keys:sub.keys},JSON.stringify(payload),{TTL:300,timeout:8000,urgency:'high'});
+      await webpush.sendNotification({endpoint:sub.endpoint,keys:sub.keys},branded(payload),{TTL:300,timeout:8000,urgency:'high'});
       checked(await db.from('push_trial_deliveries').update({status:'sent',sent_at:new Date().toISOString()}).eq('subscription_id',sub.id).eq('trial_id',trial.id).eq('start_at',payload.start_at));sent++;
      }catch(error:any){
       failed++;
@@ -90,7 +93,7 @@ Deno.serve(async req=>{
    const cutoff=new Date(Date.now()-30000).toISOString();
    const claimed=checked(await db.from('push_subscriptions').update({last_test_at:new Date().toISOString()}).eq('id',existing.id).or(`last_test_at.is.null,last_test_at.lt.${cutoff}`).select('id'));
    if(!claimed.length)return reply({error:'Chờ 30 giây trước khi thử lại.'},429);
-   await webpush.sendNotification(subscription,JSON.stringify({title:'OPENMUSIC',body:'Thiết bị đã nhận được thông báo từ máy chủ.',tag:'openmusic-test',url:'/'}),{TTL:60,timeout:8000});return reply({sent:true});
+   await webpush.sendNotification(subscription,branded({title:'OPENMUSIC',body:'Thiết bị đã nhận được thông báo từ máy chủ.',tag:'openmusic-test',url:'/'}),{TTL:60,timeout:8000});return reply({sent:true});
   }
   return reply({error:'Thao tác không hợp lệ.'},400);
  }catch(error:any){console.error('Web push error:',error.message);return reply({error:'Không thể xử lý thông báo. Kiểm tra cấu hình Web Push trên Supabase.'},500);}

@@ -1,0 +1,10 @@
+﻿{
+    "id":  "chi-luyen",
+    "supabaseUrl":  "https://zyrhbaevrdunbhinukwu.supabase.co",
+    "supabaseAnonKey":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cmhiYWV2cmR1bmJoaW51a3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyMTk4OTQsImV4cCI6MjEwODc5NTg5NH0.uFvB4QYf7MYoVPX2HMagy39NnTnwtLlH77uIe2j1484",
+    "shortName":  "MUSIC CENTER",
+    "fullName":  "Trung tâm Âm nhạc",
+    "brandHtml":  "MUSIC\u003cspan\u003e CENTER\u003c/span\u003e",
+    "themeColor":  "#e7efeb",
+    "note":  "Tên/logo tạm — thay bằng thương hiệu thật. Logo: đặt file vào centers/chi-luyen/assets/ (logo-icon.png, logo-192.png, logo-512.png, apple-touch-icon.png, favicon.png, logo-wordmark.png)."
+}
