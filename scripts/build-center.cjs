@@ -57,6 +57,23 @@ for (const f of brandFiles) {
   fs.writeFileSync(p, s);
 }
 
+// Màu riêng của trung tâm (center.theme): ghi đè biến CSS sáng/tối + màu thanh trạng thái + màu ghi cứng
+const theme = center.theme;
+if (theme) {
+  const block = (sel, vars) => vars ? `${sel} {\n${Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join("\n")}\n}\n` : "";
+  const cssPath = path.join(out, "styles.css");
+  let css = fs.readFileSync(cssPath, "utf8");
+  for (const [a, b] of theme.cssSwaps || []) css = css.split(a).join(b);
+  css += `\n/* ===== Màu riêng trung tâm "${center.fullName}" (sinh từ centers/${id}/center.json) ===== */\n` +
+    // sáng: chỉ khi KHÔNG ở chế độ tối (":root" trơn sẽ đè cả biến tối gốc mà trung tâm không ghi đè)
+    block(':root:not([data-theme="dark"])', theme.light) + block(':root[data-theme="dark"]', theme.dark);
+  fs.writeFileSync(cssPath, css);
+  if (theme.chrome) for (const f of ["index.html", "app.js", "manifest.webmanifest"]) {
+    const p = path.join(out, f);
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").split("#e7efeb").join(theme.chrome.light).split("#0b1a18").join(theme.chrome.dark));
+  }
+}
+
 // Supabase riêng của trung tâm
 fs.writeFileSync(path.join(out, "config.js"),
   `// Cấu hình trung tâm "${center.fullName}" — sinh tự động từ centers/${id}/center.json (đừng sửa tay)\n` +

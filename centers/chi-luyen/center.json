@@ -5,7 +5,84 @@
   "shortName": "SI MUSIC",
   "fullName": "Si Music Center",
   "brandHtml": "SI<span> MUSIC</span>",
-  "themeColor": "#e7efeb",
+  "themeColor": "#f4eee1",
   "tagline": "Music Center",
-  "logoNote": "Logo: đặt file vào centers/chi-luyen/assets/ (logo-icon.png, logo-192.png, logo-512.png, apple-touch-icon.png, favicon.png, logo-wordmark.png)"
+  "logoNote": "Logo: đặt file vào centers/chi-luyen/assets/ (logo-icon.png, logo-192.png, logo-512.png, apple-touch-icon.png, favicon.png, logo-wordmark.png)",
+  "theme": {
+    "chrome": {
+      "light": "#f4eee1",
+      "dark": "#16120a"
+    },
+    "light": {
+      "--bg": "#f4eee1",
+      "--bg-soft": "rgba(248,243,232,.85)",
+      "--card": "rgba(255,255,255,.74)",
+      "--card-solid": "#fdfaf3",
+      "--border": "rgba(70,52,15,.11)",
+      "--text": "#2f2614",
+      "--muted": "#6e6148",
+      "--muted-2": "#9c8e72",
+      "--primary": "#9a7420",
+      "--primary-d": "#7f5f19",
+      "--primary-press": "#664c13",
+      "--primary-grad": "linear-gradient(145deg, #c9a54d, #a5802a 62%, #82621a)",
+      "--info-bg": "rgba(178,139,48,.12)",
+      "--chieu-bg": "rgba(178,139,48,.12)",
+      "--chieu-fg": "#82621a",
+      "--sang-bg": "rgba(222,140,60,.15)",
+      "--sang-fg": "#a85a12",
+      "--shadow": "0 9px 28px rgba(95,72,25,.09), inset 0 1px 0 rgba(255,255,255,.95)",
+      "--shadow-sm": "0 6px 20px rgba(95,72,25,.06), inset 0 1px 0 rgba(255,255,255,.9)",
+      "--amb-1": "#fbf8f0",
+      "--amb-2": "#f5eddb",
+      "--amb-3": "#eee3cc",
+      "--orb-a": "radial-gradient(ellipse at 40% 35%, #eedcae 0%, #e0c88e 45%, #f6edd6 72%)",
+      "--orb-b": "radial-gradient(ellipse at 60% 30%, #fffbf2 5%, #f3e7c6 40%, #e4d1a2 80%)",
+      "--orb-c": "#f1e5c8",
+      "--ribbon": "rgba(255,250,236,.32)"
+    },
+    "dark": {
+      "--bg": "#16120a",
+      "--bg-soft": "rgba(32,26,15,.85)",
+      "--card": "rgba(44,36,22,.66)",
+      "--card-2": "rgba(52,43,26,.55)",
+      "--card-solid": "#241d11",
+      "--text": "#f3ead6",
+      "--muted": "#bba98a",
+      "--muted-2": "#8a7a5c",
+      "--primary": "#b08a36",
+      "--primary-d": "#957330",
+      "--primary-press": "#7a5d24",
+      "--primary-grad": "linear-gradient(145deg, #c49c45, #a17b2c 62%, #7e5f1d)",
+      "--info-bg": "rgba(201,161,72,.15)",
+      "--chieu-bg": "rgba(201,161,72,.15)",
+      "--chieu-fg": "#e0c06a",
+      "--glass": "rgba(40,32,18,.5)",
+      "--amb-1": "#1a150c",
+      "--amb-2": "#211a0e",
+      "--amb-3": "#15110a",
+      "--orb-a": "radial-gradient(ellipse at 40% 35%, #4a3a17 0%, #3a2d12 45%, transparent 72%)",
+      "--orb-b": "radial-gradient(ellipse at 60% 30%, #43361b 5%, #352a14 40%, transparent 80%)",
+      "--orb-c": "#2e2410",
+      "--ribbon": "rgba(240,215,150,.05)"
+    },
+    "cssSwaps": [
+      [
+        "rgba(43,104,91",
+        "rgba(120,90,30"
+      ],
+      [
+        "rgba(66,108,89",
+        "rgba(125,95,35"
+      ],
+      [
+        "rgba(22,100,79",
+        "rgba(150,112,30"
+      ],
+      [
+        "#0d2c25",
+        "#2b200c"
+      ]
+    ]
+  }
 }
