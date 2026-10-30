@@ -290,16 +290,48 @@
     recovering = B.isRecovery();
     if (recovering) { showAuth(); setAuthMode("reset"); }
 
+    // Mở nhanh: hiện bản lưu của tài khoản dùng lần trước NGAY, không chờ Supabase xác nhận phiên
+    // (bước xác nhận có lúc phải làm mới token qua máy chủ — mất ~0,5 s). Xác nhận vẫn chạy ngay sau đây.
+    await hydrateEarly();
+
     B.onAuthChange((ev, u) => {
       if (ev === "PASSWORD_RECOVERY") { recovering = true; showAuth(); setAuthMode("reset"); return; }
       if (recovering) return;
       if (u) { user = u; afterLogin(); }
-      else onSignedOut();
+      else if (!keepOfflineSnapshot()) onSignedOut();
     });
 
     user = await B.getUser();
     if (user && !recovering) afterLogin();
-    else if (!recovering) { showAuth(); setAuthMode("login"); }
+    else if (!recovering && !keepOfflineSnapshot()) { if (earlyUid) onSignedOut(); else { showAuth(); setAuthMode("login"); } }
+  }
+
+  // ---------- MỞ NHANH TỪ BẢN LƯU ----------
+  let earlyUid = null;   // tài khoản đang hiện từ bản lưu, CHƯA được Supabase xác nhận
+  async function hydrateEarly() {
+    if (recovering) return;
+    let uid = null;
+    try { uid = localStorage.getItem("om-last-uid"); } catch (_) {}
+    if (!uid) return;
+    const snap = await idb.get("snap:" + uid);
+    if (!snap || snap.v !== SNAP_VERSION || !snap.profile || !snap.raw || currentUid) return;
+    user = { id: uid, email: snap.profile.email };
+    myProfile = snap.profile;
+    applyGlobals(snap.raw);
+    (snap.today || []).forEach(([k, v]) => todayCache.set(k, v));
+    (snap.week || []).forEach(([k, v]) => weekCache.set(k, v));
+    showAppShell();
+    initSettingsUI();
+    switchView("today");
+    hideSplash(true);
+    earlyUid = uid;
+    console.info("[OPENMUSIC load] hiện từ bản lưu trên máy (mở nhanh):", Math.round(performance.now()) + "ms sau khi mở trang");
+  }
+  // mất mạng mà đang xem bản lưu -> giữ lại để xem, không coi là đăng xuất
+  function keepOfflineSnapshot() {
+    if (!earlyUid || navigator.onLine !== false) return false;
+    toast("Đang mất mạng — hiển thị dữ liệu đã lưu trên máy.", "err");
+    return true;
   }
 
   function setupModeUI() {
@@ -417,9 +449,18 @@
     currentUid = user.id;
     const loginId = currentUid;
     let fromSnapshot = false;
+    try { localStorage.setItem("om-last-uid", loginId); } catch (_) {}
+    // đã hiện sẵn từ bản lưu lúc mở trang (hydrateEarly)?
+    if (earlyUid === loginId) fromSnapshot = true;
+    else if (earlyUid) {   // máy đang hiện bản lưu của tài khoản KHÁC -> bỏ ngay dữ liệu đó
+      todayCache.clear(); weekCache.clear();
+      applyGlobals({});
+      $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
+    }
+    earlyUid = null;
     try {
     // 1) Bản lưu trên máy (vài ms): có thì hiện app NGAY như app thật, không chờ Supabase (máy chủ ở Mumbai)
-    const snap = await idb.get("snap:" + loginId);
+    const snap = fromSnapshot ? null : await idb.get("snap:" + loginId);
     if (currentUid !== loginId) return;
     if (snap && snap.v === SNAP_VERSION && snap.profile && snap.raw) {
       myProfile = snap.profile;
@@ -486,6 +527,8 @@
 
   function onSignedOut() {
     devicePushEnabled = false;
+    earlyUid = null;
+    try { localStorage.removeItem("om-last-uid"); } catch (_) {}
     user = null; currentUid = null; myProfile = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
