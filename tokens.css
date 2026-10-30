@@ -1,0 +1,51 @@
+/* =====================================================================
+   tokens.css — BẢNG MÀU & KÍCH THƯỚC (design tokens) của giao diện Liquid Glass
+   Nạp TRƯỚC styles.css. Mọi thành phần trong styles.css chỉ đọc các biến này,
+   nên muốn đổi màu cả app / mang sang nền tảng khác: sửa (hoặc thay) đúng file này.
+   - :root, [data-theme="light"]  : giao diện sáng (mặc định)
+   - [data-theme="dark"]           : giao diện tối
+   Trung tâm khác: KHÔNG sửa file này — đặt màu riêng ở centers/<id>/center.json (mục "theme"),
+   script build sẽ ghi đè lên (xem docs/GIAO-DIEN.md).
+   ===================================================================== */
+
+:root, [data-theme="light"] {
+  --bg: #e7efeb; --bg-soft: rgba(238,245,241,.85); --card: rgba(255,255,255,.71); --card-2: rgba(255,255,255,.55);
+  --card-solid: #f6fbf8;
+  --border: rgba(22,62,56,.10); --text: #163e38; --muted: #536c65; --muted-2: #85998f;
+  --primary: #087f73; --primary-d: #075e55; --primary-press: #064f48;
+  --primary-grad: linear-gradient(145deg, #279f8c, #087c6f 64%, #066658);
+  --good: #1f9d6b; --warn: #b07a1c; --bad: #d4515b;
+  --info-bg: rgba(8,127,115,.10);
+  --sang-bg: rgba(214,160,50,.15); --sang-fg: #9a6a14;
+  --chieu-bg: rgba(8,127,115,.10); --chieu-fg: #087f73;
+  --toi-bg: rgba(31,157,107,.12); --toi-fg: #1f9d6b;
+  --shadow: 0 9px 28px rgba(35,80,65,.08), inset 0 1px 0 rgba(255,255,255,.95);
+  --shadow-sm: 0 6px 20px rgba(35,80,65,.05), inset 0 1px 0 rgba(255,255,255,.9);
+  --glass: rgba(255,255,255,.44); --glass-border: rgba(255,255,255,.86);
+  --blur: 24px; color-scheme: light;
+  --amb-1: #f2f3e9; --amb-2: #e1efe8; --amb-3: #d8e8e7;
+  --orb-a: radial-gradient(ellipse at 40% 35%, #c4ddd0 0%, #9fcbc0 45%, #e1eee2 72%);
+  --orb-b: radial-gradient(ellipse at 60% 30%, #f8f4e7 5%, #e3e9d7 40%, #b9d4ca 80%);
+  --orb-c: #d2e5e7; --ribbon: rgba(249,255,247,.28);
+}
+
+[data-theme="dark"] {
+  --bg: #0b1a18; --bg-soft: rgba(16,36,32,.85); --card: rgba(22,44,40,.66); --card-2: rgba(26,52,47,.55);
+  --card-solid: #122723;
+  --border: rgba(255,255,255,.08); --text: #e3f1ec; --muted: #8fb0a6; --muted-2: #62807a;
+  --primary: #1fa290; --primary-d: #17897a; --primary-press: #116e62;
+  --primary-grad: linear-gradient(145deg, #2fb8a2, #149181 64%, #0d7366);
+  --good: #3fcf94; --warn: #e9b44c; --bad: #f07a83;
+  --info-bg: rgba(47,191,168,.14);
+  --sang-bg: rgba(233,180,76,.14); --sang-fg: #e9b44c;
+  --chieu-bg: rgba(47,191,168,.14); --chieu-fg: #5fd3bf;
+  --toi-bg: rgba(63,207,148,.12); --toi-fg: #3fcf94;
+  --shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  --shadow-sm: 0 6px 18px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.05);
+  --glass: rgba(20,40,36,.5); --glass-border: rgba(255,255,255,.10);
+  --blur: 24px; color-scheme: dark;
+  --amb-1: #0c1c1a; --amb-2: #0e2421; --amb-3: #0a1917;
+  --orb-a: radial-gradient(ellipse at 40% 35%, #1b4a40 0%, #123a33 45%, transparent 72%);
+  --orb-b: radial-gradient(ellipse at 60% 30%, #23413a 5%, #173530 40%, transparent 80%);
+  --orb-c: #102f2c; --ribbon: rgba(160,230,210,.05);
+}

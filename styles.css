@@ -1,52 +1,11 @@
 /* =====================================================================
    OPENMUSIC — giao diện (kế thừa design language từ dự án mẫu)
    Stripe-inspired + liquid glass · font Inter · dark/light · responsive
+   Màu & kích thước (design tokens) nằm ở tokens.css — file này chỉ dùng biến.
+   Quy tắc giữ nhẹ (kính mờ, chuyển động, đổi màu theo trung tâm): docs/GIAO-DIEN.md
    ===================================================================== */
 
-/* ===== THEME ===== */
-/* Liquid Glass: ngọc trai + xanh teal (sáng, mặc định) / teal đêm (tối) */
-:root, [data-theme="light"] {
-  --bg: #e7efeb; --bg-soft: rgba(238,245,241,.85); --card: rgba(255,255,255,.71); --card-2: rgba(255,255,255,.55);
-  --card-solid: #f6fbf8;
-  --border: rgba(22,62,56,.10); --text: #163e38; --muted: #536c65; --muted-2: #85998f;
-  --primary: #087f73; --primary-d: #075e55; --primary-press: #064f48;
-  --primary-grad: linear-gradient(145deg, #279f8c, #087c6f 64%, #066658);
-  --good: #1f9d6b; --warn: #b07a1c; --bad: #d4515b;
-  --info-bg: rgba(8,127,115,.10);
-  --sang-bg: rgba(214,160,50,.15); --sang-fg: #9a6a14;
-  --chieu-bg: rgba(8,127,115,.10); --chieu-fg: #087f73;
-  --toi-bg: rgba(31,157,107,.12); --toi-fg: #1f9d6b;
-  --shadow: 0 9px 28px rgba(35,80,65,.08), inset 0 1px 0 rgba(255,255,255,.95);
-  --shadow-sm: 0 6px 20px rgba(35,80,65,.05), inset 0 1px 0 rgba(255,255,255,.9);
-  --glass: rgba(255,255,255,.44); --glass-border: rgba(255,255,255,.86);
-  --blur: 24px; color-scheme: light;
-  --amb-1: #f2f3e9; --amb-2: #e1efe8; --amb-3: #d8e8e7;
-  --orb-a: radial-gradient(ellipse at 40% 35%, #c4ddd0 0%, #9fcbc0 45%, #e1eee2 72%);
-  --orb-b: radial-gradient(ellipse at 60% 30%, #f8f4e7 5%, #e3e9d7 40%, #b9d4ca 80%);
-  --orb-c: #d2e5e7; --ribbon: rgba(249,255,247,.28);
-}
-[data-theme="dark"] {
-  --bg: #0b1a18; --bg-soft: rgba(16,36,32,.85); --card: rgba(22,44,40,.66); --card-2: rgba(26,52,47,.55);
-  --card-solid: #122723;
-  --border: rgba(255,255,255,.08); --text: #e3f1ec; --muted: #8fb0a6; --muted-2: #62807a;
-  --primary: #1fa290; --primary-d: #17897a; --primary-press: #116e62;
-  --primary-grad: linear-gradient(145deg, #2fb8a2, #149181 64%, #0d7366);
-  --good: #3fcf94; --warn: #e9b44c; --bad: #f07a83;
-  --info-bg: rgba(47,191,168,.14);
-  --sang-bg: rgba(233,180,76,.14); --sang-fg: #e9b44c;
-  --chieu-bg: rgba(47,191,168,.14); --chieu-fg: #5fd3bf;
-  --toi-bg: rgba(63,207,148,.12); --toi-fg: #3fcf94;
-  --shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
-  --shadow-sm: 0 6px 18px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.05);
-  --glass: rgba(20,40,36,.5); --glass-border: rgba(255,255,255,.10);
-  --blur: 24px; color-scheme: dark;
-  --amb-1: #0c1c1a; --amb-2: #0e2421; --amb-3: #0a1917;
-  --orb-a: radial-gradient(ellipse at 40% 35%, #1b4a40 0%, #123a33 45%, transparent 72%);
-  --orb-b: radial-gradient(ellipse at 60% 30%, #23413a 5%, #173530 40%, transparent 80%);
-  --orb-c: #102f2c; --ribbon: rgba(160,230,210,.05);
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; scrollbar-width: none; }
 [hidden] { display: none !important; }
 .hidden { display: none !important; }
 html, body { overflow-x: hidden; max-width: 100%; }
@@ -86,9 +45,8 @@ svg { display: block; }
 .menu-item {
   display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
   padding: 11px 13px; border-radius: 11px; border: 1px solid transparent; background: none;
-  color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: .14s;
+  color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: .14s; position: relative;
 }
-.menu-item { position: relative; }
 .menu-item .mi-ic { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
 .menu-item:hover { background: var(--bg-soft); color: var(--text); }
 .menu-item.active { background: var(--info-bg); color: var(--primary); border-color: color-mix(in srgb, var(--primary) 28%, transparent); }
@@ -452,8 +410,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 /* ===== AUTH OVERLAY ===== */
 .auth-overlay { position: fixed; inset: 0; background: var(--bg); background-image: radial-gradient(800px 500px at 50% -10%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 60%); display: grid; place-items: center; padding: 20px; z-index: 100; }
 .auth-card { width: 100%; max-width: 396px; background: var(--glass); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); border: 1px solid var(--glass-border); border-radius: 22px; padding: 32px 28px; box-shadow: var(--shadow); text-align: center; }
-.auth-card .logo.big { width: 66px; height: 66px; border-radius: 20px; margin: 0 auto 16px; }
-.auth-card .logo.big { animation: logoHero 1s cubic-bezier(.2,.75,.2,1) both; }
+.auth-card .logo.big { width: 66px; height: 66px; border-radius: 20px; margin: 0 auto 16px; animation: logoHero 1s cubic-bezier(.2,.75,.2,1) both; }
 .auth-card .auth-content { animation: contentRise .6s ease .4s both; }
 @keyframes logoHero { 0% { transform: translateY(30vh) scale(2.4); opacity: 0; } 16% { opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes contentRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -672,8 +629,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .schedule-calendar svg, .schedule-actions svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .schedule-calendar-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 1px 14px; }
 .schedule-period.date-wrap { display: flex; align-items: flex-start; flex-direction: column; position: relative; min-width: 0; width: auto; gap: 2px; }
-.schedule-period .schedule-month { position: static; width: auto; height: auto; border: 0; border-radius: 10px; padding: 3px 0; display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--text); font: inherit; font-size: 17px; font-weight: 650; text-align: left; cursor: pointer; box-shadow: none; }
-.schedule-period .schedule-month { transform: none; min-height: 36px; }
+.schedule-period .schedule-month { position: static; width: auto; height: auto; border: 0; border-radius: 10px; padding: 3px 0; display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--text); font: inherit; font-size: 17px; font-weight: 650; text-align: left; cursor: pointer; box-shadow: none; transform: none; min-height: 36px; }
 .schedule-month svg { width: 14px; height: 14px; color: var(--muted); }
 .schedule-range { font-size: 12px; line-height: 1.5; color: var(--muted); font-variant-numeric: tabular-nums; }
 .schedule-date-source { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
@@ -775,7 +731,6 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .att-exc input { width: 17px; height: 17px; accent-color: var(--primary); }
 
 /* Hôm nay: nội dung gọn, ưu tiên tên học sinh và thao tác. */
-* { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 .hero { margin-top: 4px; margin-bottom: 18px; }
 .ws-head .ws-month.cal-btn { position: static; transform: none; font: inherit; font-size: 16px; font-weight: 650; padding: 0 8px; }
@@ -960,12 +915,10 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 #pageSearchInput { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-soft); color: var(--text); font: inherit; font-size: 16px; }
 #pageSearchResults { padding: 10px 0; }#pageSearchResults>button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 47px; border: 0; border-bottom: 1px solid var(--border); padding: 11px 3px; background: transparent; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }#pageSearchResults>button:hover { background: var(--info-bg); }#pageSearchResults strong { font-weight: 550; }#pageSearchResults span,#pageSearchResults p { color: var(--muted); font-size: 12px; }#pageSearchDone { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 5px auto 0; }
 .day-block .dhead { align-items: flex-start; gap: 8px; padding: 10px 12px 6px; }.day-heading { flex: 1; min-width: 0; gap: 5px 8px; }.day-block .dhead .dname { font-size: clamp(12px,3.3vw,14px); font-weight: 650; white-space: nowrap; }.day-block .dhead .dadd { flex: 0 0 72px; min-width: 72px; height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 12px; align-self: flex-start; }.day-block .dbody { padding: 4px 12px 12px; }.day-block .buoi-row+.buoi-row { margin-top: 9px; }
-.ambient .treble-clef { position: absolute; display: block; left: calc(50% - 130px); top: 26%; width: 330px; height: 620px; font-family: 'Segoe UI Symbol','Apple Symbols','Noto Music',serif; font-size: 600px; font-style: normal; line-height: 1; color: rgba(22,100,79,.07); transform: rotate(-12deg); pointer-events: none; }
-[data-theme="dark"] .ambient .treble-clef { color: rgba(170,230,210,.06); }
+.ambient .treble-clef { position: absolute; display: block; left: calc(50% - 130px); top: 26%; width: 330px; height: 620px; font-family: 'Segoe UI Symbol','Apple Symbols','Noto Music',serif; font-style: normal; line-height: 1; color: rgba(22,100,79,.07); transform: rotate(-12deg); pointer-events: none; font-size: 0; background: rgba(22,100,79,.07); -webkit-mask: url("treble-clef.svg") center / contain no-repeat; mask: url("treble-clef.svg") center / contain no-repeat; }
+[data-theme="dark"] .ambient .treble-clef { color: rgba(170,230,210,.06); background: rgba(170,230,210,.06); }
 
 /* A vector clef stays consistent across iPhone and desktop fonts. */
-.ambient .treble-clef { font-size: 0; background: rgba(22,100,79,.07); -webkit-mask: url("treble-clef.svg") center / contain no-repeat; mask: url("treble-clef.svg") center / contain no-repeat; }
-[data-theme="dark"] .ambient .treble-clef { background: rgba(170,230,210,.06); }
 
 /* iPhone browser + installed PWA: one chrome color, hardware-provided insets.
    Keep status-bar style=default for readable system text in light/dark mode. */

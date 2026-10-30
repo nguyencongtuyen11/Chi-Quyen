@@ -24,7 +24,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 // file web được phục vụ (giống danh sách SHELL của sw.js + ảnh)
-const files = fs.readdirSync(root).filter((f) => /\.(html|css|js|png|svg|webmanifest|ico)$/i.test(f) && fs.statSync(path.join(root, f)).isFile());
+const files = fs.readdirSync(root).filter((f) => !f.startsWith(".") && /\.(html|css|js|png|svg|webmanifest|ico)$/i.test(f) && fs.statSync(path.join(root, f)).isFile());
 const dirs = ["vendor"];
 for (const f of files) fs.copyFileSync(path.join(root, f), path.join(out, f));
 for (const d of dirs) fs.cpSync(path.join(root, d), path.join(out, d), { recursive: true });

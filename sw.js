@@ -10,6 +10,7 @@ const VERSION = "om-v8-web-push";
 const SHELL = [
   "./",
   "index.html",
+  "tokens.css",
   "styles.css",
   "treble-clef.svg",
   "app.js",
