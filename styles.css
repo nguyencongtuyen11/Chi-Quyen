@@ -205,33 +205,22 @@ svg { display: block; }
 /* ===================================================================
    HÔM NAY & ĐIỂM DANH
    =================================================================== */
-.att-datenav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.att-datenav .att-date-wrap { width: auto; }
-.att-datenav .datepick { min-width: 150px; text-align: center; font-weight: 700; }
-.migration-banner { background: var(--sang-bg); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); padding: 10px 14px; border-radius: 12px; font-size: 13px; margin-bottom: 14px; }
 .today-list { display: flex; flex-direction: column; gap: 14px; }
 .class-card.locked .att-actions, .class-card.locked .cc-tpresent .tp-toggle, .class-card.locked .cc-foot { opacity: .45; pointer-events: none; }
 .class-card.locked .att-status { opacity: 1; }
 /* mỗi buổi = cột giờ (timeline) + thẻ kính */
 .lesson { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 10px; }
-.ls-time { padding-top: 18px; font-size: 14px; letter-spacing: -.2px; }
-.ls-time b { font-weight: 700; display: block; }
-.ls-time small { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
-.ls-time .ls-line { display: block; width: 1px; height: 46px; margin: 14px auto 0; background: linear-gradient(color-mix(in srgb, var(--muted) 45%, transparent), transparent); }
-.class-card { position: relative; background: var(--card); border: 1px solid var(--glass-border); border-radius: 23px; overflow: hidden; box-shadow: var(--shadow-sm);
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(150%); backdrop-filter: blur(var(--blur)) saturate(150%); }
+.class-card { position: relative; background: var(--card); border: 1px solid var(--glass-border); border-radius: 23px; overflow: hidden; box-shadow: var(--shadow-sm); }
 .class-card::before { content: ""; position: absolute; left: 0; top: 20px; width: 3px; height: 30px; border-radius: 3px; background: var(--primary); }
 .class-card.is-past { opacity: .9; }
 .cc-head { padding: 17px 17px 12px; }
 .cc-eyebrow { font-size: 10.5px; font-weight: 750; letter-spacing: 1.2px; text-transform: uppercase; color: color-mix(in srgb, var(--primary) 80%, var(--text)); margin-bottom: 8px; }
 .cc-title { font-size: 17px; font-weight: 650; letter-spacing: -.3px; line-height: 1.4; }
 .cc-meta { font-size: 13px; color: var(--muted); margin-top: 6px; }
-.cc-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; min-height: 26px; }
 .cc-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 5px 9px; border-radius: 9px; white-space: nowrap; }
 .cc-badge svg { width: 14px; height: 14px; }
 .cc-badge.done { background: var(--toi-bg); color: var(--toi-fg); }
 .cc-badge.pending { background: var(--sang-bg); color: var(--sang-fg); }
-.cc-dur { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .cc-body { margin: 0 12px; padding: 4px 6px; border-radius: 16px; background: color-mix(in srgb, var(--card-solid) 55%, transparent); border: 1px solid var(--border); }
 .cc-tpresent { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 17px 0; }
 
@@ -271,20 +260,10 @@ svg { display: block; }
 .att-note-input:focus { outline: none; border-color: var(--warn); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
 .class-empty-students { color: var(--muted-2); font-size: 13px; padding: 12px; text-align: center; }
 .cc-foot { padding: 8px 14px 12px; }
-.add-stud-row { display: flex; gap: 8px; align-items: center; }
-.add-stud-row select { flex: 1; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); font-family: inherit; font-size: 13px; }
 
 /* ===================================================================
    THỜI KHÓA BIỂU (lưới tuần / danh sách ngày)  — như dự án mẫu
    =================================================================== */
-.datenav { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; background: var(--glass); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); border: 1px solid var(--glass-border); border-radius: 16px; padding: 10px 12px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
-.datenav .nav-center { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
-.datenav .curdate { text-align: center; min-width: 132px; }
-.datenav .curdate .dow { font-size: 12.5px; color: var(--muted); font-weight: 600; }
-.datenav .curdate .dmy { font-size: 19px; font-weight: 700; letter-spacing: -.4px; }
-.datenav .spacer-grow { flex: 1 1 6px; }
-.datenav .date-wrap { width: auto; }
-.datenav .datepick { min-width: 132px; }
 
 .tkb-wrap { background: var(--glass); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); border: 1px solid var(--glass-border); border-radius: 18px; padding: 8px; box-shadow: var(--shadow); overflow: hidden; }
 .tkb-wrap.loading .week-grid, .tkb-wrap.loading .week-list { display: none; }
@@ -453,7 +432,6 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .pi-sub { font-size: 12px; color: var(--muted); }
 
 /* ===== LÃI / LỖ ===== */
-.profit-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .profit-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow-sm); }
 .profit-card .pc-ic { font-size: 28px; }
 .profit-card .pc-label { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; margin-top: 6px; }
@@ -463,7 +441,6 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .profit-card.bad .pc-value { color: var(--bad); }
 .profit-card.primary { border-color: color-mix(in srgb, var(--primary) 40%, transparent); background: var(--info-bg); }
 .profit-card.primary .pc-value { color: var(--primary); }
-@media (max-width: 600px) { .profit-cards { grid-template-columns: 1fr; } }
 
 /* ô ngày dd/mm/yyyy + nút lịch */
 .date-wrap { position: relative; display: inline-flex; align-items: center; width: 100%; }
@@ -525,7 +502,6 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
   .search, .inline input, .pr-item input, .pr-field input { font-size: 16px; }
   .price-row { grid-template-columns: 64px 1fr 1fr; gap: 8px; }
   .card-list { grid-template-columns: 1fr; }
-  .datenav .btn { padding: 8px 11px; font-size: 12.5px; }
   .view-head { flex-direction: column; }
   .stat-chips { width: 100%; }
   .stat-chip { flex: 1; min-width: 0; }
@@ -561,17 +537,14 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .ambient .orb-a { width: 360px; height: 440px; background: var(--orb-a); left: calc(50% - 290px); top: 360px; transform: rotate(-35deg); opacity: .7; }
 .ambient .orb-b { width: 340px; height: 430px; background: var(--orb-b); left: calc(50% - 40px); top: -220px; transform: rotate(-45deg); }
 .ambient .orb-c { width: 290px; height: 250px; background: var(--orb-c); right: calc(50% - 280px); top: 570px; opacity: .8; }
-.ambient .ribbon { position: absolute; width: 360px; height: 650px; left: calc(50% + 20px); top: 140px; transform: rotate(36deg); border-radius: 50%; border: 38px solid var(--ribbon); }
 @media (min-width: 901px) {
   .ambient .orb-a { left: 8%; width: 520px; height: 600px; }
   .ambient .orb-b { left: auto; right: 6%; width: 520px; height: 560px; }
   .ambient .orb-c { right: 30%; top: 60%; }
-  .ambient .ribbon { left: 55%; }
 }
 
 /* bề mặt kính dùng chung */
-.sidebar, .topbar, .stat-chip, .info-card, .settings-card, .table-wrap, .profit-card, .day-block, .empty,
-.datenav, .tkb-wrap, .account, .icon-btn, .btn:not(.primary), .week-strip, .reminder-bar, .toolbar select, .search, .datepick {
+.sidebar, .topbar, .tkb-wrap, .week-strip, .reminder-bar {
   -webkit-backdrop-filter: blur(var(--blur)) saturate(150%); backdrop-filter: blur(var(--blur)) saturate(150%);
 }
 .sidebar { background: var(--glass); border-right: 1px solid var(--glass-border); }
@@ -590,13 +563,13 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .info-card, .settings-card { padding: 17px; }
 .stat-chip { border-radius: 18px; }
 .profit-card { border-radius: 22px; }
-.datenav, .tkb-wrap { background: var(--glass); border-color: var(--glass-border); border-radius: 26px; }
+.tkb-wrap { background: var(--glass); border-color: var(--glass-border); border-radius: 26px; }
 .week-grid { border-radius: 18px; }
 .day-block .dhead, table.tbl th, table.tbl tfoot td { background: color-mix(in srgb, var(--card-solid) 60%, transparent); }
 .mini { border-radius: 12px; background: color-mix(in srgb, var(--card-solid) 70%, transparent); }
 .modal { background: var(--card-solid); border-color: var(--glass-border); border-radius: 26px; }
 .modal-backdrop { background: color-mix(in srgb, #0d2c25 22%, transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-.field input, .field select, .field textarea, .pr-item input, .pr-field input, .add-stud-row select, .att-note-input, .chk-list, .wk-list {
+.field input, .field select, .field textarea, .pr-item input, .pr-field input, .att-note-input, .chk-list, .wk-list {
   background: color-mix(in srgb, var(--card-solid) 75%, transparent); border-radius: 13px; }
 .att-btn { background: var(--card); border-radius: 11px; }
 .tp-toggle { background: var(--glass); border-color: var(--glass-border); }
@@ -645,12 +618,6 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .ws-day.active .dot { background: rgba(255,255,255,.85); }
 
 /* hàng chọn ngày + "Hôm nay" */
-.att-datenav { justify-content: space-between; max-width: 560px; }
-.att-datenav [data-attnav] { display: none; }
-.att-datenav .datepick { border-radius: 22px; min-width: 170px; text-align: left; padding-left: 16px; }
-.btn.att-today { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; color: var(--primary-d); font-weight: 650; }
-[data-theme="dark"] .btn.att-today { color: var(--primary); }
-.today-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 #view-today .view-head { align-items: flex-end; margin: 22px 0 16px; }
 #view-today .view-head h3 { font-size: 21px; font-weight: 650; letter-spacing: -.5px; }
 #view-today .view-head .sub { font-size: 13px; }
@@ -877,11 +844,8 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
   .att-btn { width: 30px; min-height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
-.add-stud-row { flex-wrap: wrap; }
-.add-stud-search { flex: 1 1 140px; min-width: 0; padding: 8px 11px; border-radius: 13px; border: 1px solid var(--border); background: color-mix(in srgb, var(--card-solid) 75%, transparent); color: var(--text); font: inherit; font-size: 13px; }
-.add-stud-row select { flex: 1 1 160px; min-width: 0; }
 .chk-search { width: 100%; margin-bottom: 8px; padding: 10px 12px; border-radius: 13px; border: 1px solid var(--border); background: color-mix(in srgb, var(--card-solid) 75%, transparent); color: var(--text); font: inherit; font-size: 14px; }
-@media (max-width: 600px) { .add-stud-search, .chk-search { font-size: 16px; } }
+@media (max-width: 600px) { .chk-search { font-size: 16px; } }
 
 /* Tinh chỉnh lịch, tìm học sinh, khóa học và báo cáo trên điện thoại. */
 .topbar { background: transparent; border-bottom-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -1045,10 +1009,6 @@ body { isolation: isolate; }
 /* ===== HIỆU NĂNG iPhone: kính mờ (backdrop-filter) chỉ giữ ở vài mảng cố định =====
    Đo thực tế: trang Học sinh có 762 lớp kính mờ (125 thẻ × 5 nút) -> giật/lag, dễ văng Safari.
    Thẻ, nút, ô nhập lặp lại dùng nền trắng ngọc hơi trong thay vì làm mờ nền phía sau. */
-.btn:not(.primary), .info-card, .class-card, .stat-chip, .day-block, .empty, .table-wrap, .profit-card,
-.settings-card, .account, .icon-btn, .toolbar select, .search, .datepick, .inline input, .tp-toggle, .mini, .att-btn, .extra-pick {
-  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-}
 .btn:not(.primary), .account, .icon-btn, .toolbar select, .search, .datepick, .inline input, .tp-toggle {
   background-color: color-mix(in srgb, var(--card-solid) 78%, transparent);
 }
