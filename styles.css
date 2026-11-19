@@ -972,8 +972,8 @@ body { isolation: isolate; }
 /* ===== MÀN CHỜ: nốt nhạc bay vào quanh logo ===== */
 .splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; align-content: center; gap: 26px;
   background: linear-gradient(145deg, var(--amb-1) 0%, var(--amb-2) 45%, var(--amb-3) 100%); overflow: hidden;
-  transition: opacity .16s ease; }
-.splash.done { opacity: 0; pointer-events: none; }
+  transition: opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1), filter .45s ease; }
+.splash.done { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
 .sp-stage { position: relative; width: 120px; height: 120px; }
 .sp-logo { position: absolute; inset: 0; width: 120px; height: 120px; border-radius: 30px; box-shadow: 0 16px 40px color-mix(in srgb, var(--primary) 30%, transparent);
   animation: spLogo .8s cubic-bezier(.34,1.56,.64,1) .45s both, spPulse 1.8s ease-in-out 1.3s infinite; }

@@ -331,7 +331,7 @@
     showAppShell();
     initSettingsUI();
     switchView("today");
-    hideSplash();
+    hideSplash(true);
     earlyUid = uid;
     console.info("[OPENMUSIC load] hiện từ bản lưu trên máy (mở nhanh):", Math.round(performance.now()) + "ms sau khi mở trang");
   }
@@ -367,13 +367,21 @@
   let authMode = "login";
   const AUTH_LABEL = { login: "Đăng nhập", signup: "Đăng ký", forgot: "Gửi liên kết đặt lại", reset: "Đổi mật khẩu" };
 
-  // Nhường thao tác ngay khi màn hình đăng nhập hoặc app đã hiện.
-  function hideSplash() {
-    const el = $("splash"); if (!el || el.classList.contains("done")) return;
+  // Giữ nhịp intro trong lúc app tải dữ liệu. Lần mở từ bản lưu dùng nhịp ngắn hơn.
+  const splashStart = performance.now();
+  let splashHideScheduled = false;
+  function hideSplash(fast = false) {
+    const el = $("splash");
+    if (!el || splashHideScheduled) return;
+    splashHideScheduled = true;
     clearTimeout(splashTimeout);
     if (reduceMotion()) { el.remove(); return; }
-    el.classList.add("done");
-    setTimeout(() => el.remove(), 180);
+    const minimum = fast ? 600 : 1100;
+    const wait = Math.max(0, minimum - (performance.now() - splashStart));
+    setTimeout(() => {
+      el.classList.add("done");
+      setTimeout(() => el.remove(), 600);
+    }, wait);
   }
   const splashTimeout = setTimeout(hideSplash, 15000);
   function showAuth() { $("authOverlay").hidden = false; hideSplash(); }
@@ -479,7 +487,7 @@
         showAppShell();
         initSettingsUI();
         switchView("today");
-        hideSplash();
+        hideSplash(true);
         console.info("[OPENMUSIC load] hiện từ bản lưu trên máy:", Math.round(performance.now()) + "ms sau khi mở trang");
       }
       // Lịch hôm nay chỉ cần hồ sơ, danh sách lớp và dữ liệu cơ bản. Lịch sử và báo cáo tải ở nền.
