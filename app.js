@@ -16,6 +16,7 @@
   // ---------- STATE ----------
   let user = null;
   let currentUid = null;
+  let loginLoad = null;
   let todayRequest = 0, weekRequest = 0, profitRequest = 0, salaryRequest = 0;
   let myProfile = null;
   let profilesList = [], profilesById = {};
@@ -137,15 +138,22 @@
     return ruleOf(bd ? bd.courses[bd.cur].c : list[list.length - 1]);
   }
   // Cập nhật bộ nhớ đệm điểm danh sau khi điểm danh ở trang Hôm nay (để số buổi/khóa luôn đúng)
-  function patchAttCache(scheduleId, studentId, patch) {
+  function updateAttendanceHistory({ schedule, studentId, patch }) {
+    const scheduleId = schedule.id;
     const list = attRowsByStudent[studentId] || (attRowsByStudent[studentId] = []);
     let r = list.find((x) => x.schedule_id === scheduleId);
     if (!r) {
-      const s = todayScheds.find((x) => x.id === scheduleId); if (!s) return;
-      r = { schedule_id: scheduleId, student_id: studentId, present: null, excused: false, schedule_date: s.schedule_date, start_time: s.start_time };
+      if (patch === null) return;
+      r = { schedule_id: scheduleId, student_id: studentId, present: null, excused: false, schedule_date: schedule.schedule_date, start_time: schedule.start_time };
       list.push(r);
     }
     if (patch === null) list.splice(list.indexOf(r), 1); else Object.assign(r, patch);
+  }
+  function patchAttCache(scheduleId, studentId, patch, schedule = todayScheds.find((s) => s.id === scheduleId)) {
+    if (!schedule) return;
+    const change = { schedule, studentId, patch };
+    if (loginLoad?.details === "loading") loginLoad.attendanceChanges.push(change);
+    updateAttendanceHistory(change);
     rebuildCourseInfo(studentId);
     saveSnapshot();
   }
@@ -323,7 +331,7 @@
     showAppShell();
     initSettingsUI();
     switchView("today");
-    hideSplash(true);
+    hideSplash();
     earlyUid = uid;
     console.info("[OPENMUSIC load] hiện từ bản lưu trên máy (mở nhanh):", Math.round(performance.now()) + "ms sau khi mở trang");
   }
@@ -359,15 +367,15 @@
   let authMode = "login";
   const AUTH_LABEL = { login: "Đăng nhập", signup: "Đăng ký", forgot: "Gửi liên kết đặt lại", reset: "Đổi mật khẩu" };
 
-  // Màn chờ nốt nhạc: ẩn khi đã có màn hình để xem (đăng nhập, hoặc lịch hôm nay đã tải xong).
-  // Giữ tối thiểu ~1,1s để nốt nhạc kịp bay vào, tránh chớp khi tải nhanh; tự ẩn sau 15s phòng treo.
-  const splashStart = performance.now();
-  function hideSplash(fast) {   // fast: đã có bản lưu trên máy -> chỉ giữ nốt nhạc ~0,6s
+  // Nhường thao tác ngay khi màn hình đăng nhập hoặc app đã hiện.
+  function hideSplash() {
     const el = $("splash"); if (!el || el.classList.contains("done")) return;
-    const wait = reduceMotion() ? 0 : Math.max(0, (fast ? 600 : 1100) - (performance.now() - splashStart));
-    setTimeout(() => { el.classList.add("done"); setTimeout(() => el.remove(), 600); }, wait);
+    clearTimeout(splashTimeout);
+    if (reduceMotion()) { el.remove(); return; }
+    el.classList.add("done");
+    setTimeout(() => el.remove(), 180);
   }
-  setTimeout(hideSplash, 15000);
+  const splashTimeout = setTimeout(hideSplash, 15000);
   function showAuth() { $("authOverlay").hidden = false; hideSplash(); }
   function hideAuth() { $("authOverlay").hidden = true; }
   function authErr(msg, ok) { const e = $("authErr"); e.textContent = msg || ""; e.style.color = ok ? "var(--good)" : "var(--bad)"; }
@@ -446,12 +454,12 @@
 
   async function afterLogin() {
     if (currentUid === user.id) return;
-    currentUid = user.id;
-    const loginId = currentUid;
-    let fromSnapshot = false;
+    const loginUser = user;
+    const loginId = currentUid = loginUser.id;
+    const login = loginLoad = { details: "loading", hasSnapshot: false, attendanceChanges: [] };
     try { localStorage.setItem("om-last-uid", loginId); } catch (_) {}
     // đã hiện sẵn từ bản lưu lúc mở trang (hydrateEarly)?
-    if (earlyUid === loginId) fromSnapshot = true;
+    if (earlyUid === loginId) login.hasSnapshot = true;
     else if (earlyUid) {   // máy đang hiện bản lưu của tài khoản KHÁC -> bỏ ngay dữ liệu đó
       todayCache.clear(); weekCache.clear();
       applyGlobals({});
@@ -459,56 +467,59 @@
     }
     earlyUid = null;
     try {
-    // 1) Bản lưu trên máy (vài ms): có thì hiện app NGAY như app thật, không chờ Supabase (máy chủ ở Mumbai)
-    const snap = fromSnapshot ? null : await idb.get("snap:" + loginId);
-    if (currentUid !== loginId) return;
-    if (snap && snap.v === SNAP_VERSION && snap.profile && snap.raw) {
-      myProfile = snap.profile;
-      applyGlobals(snap.raw);
-      (snap.today || []).forEach(([k, v]) => todayCache.set(k, v));
-      (snap.week || []).forEach(([k, v]) => weekCache.set(k, v));
+      // 1) Bản lưu trên máy (vài ms): có thì hiện app NGAY như app thật, không chờ Supabase (máy chủ ở Mumbai)
+      const snap = login.hasSnapshot ? null : await idb.get("snap:" + loginId);
+      if (loginLoad !== login) return;
+      if (snap && snap.v === SNAP_VERSION && snap.profile && snap.raw) {
+        myProfile = snap.profile;
+        applyGlobals(snap.raw);
+        (snap.today || []).forEach(([k, v]) => todayCache.set(k, v));
+        (snap.week || []).forEach(([k, v]) => weekCache.set(k, v));
+        login.hasSnapshot = true;
+        showAppShell();
+        initSettingsUI();
+        switchView("today");
+        hideSplash();
+        console.info("[OPENMUSIC load] hiện từ bản lưu trên máy:", Math.round(performance.now()) + "ms sau khi mở trang");
+      }
+      // Lịch hôm nay chỉ cần hồ sơ, danh sách lớp và dữ liệu cơ bản. Lịch sử và báo cáo tải ở nền.
+      const profileP = traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(loginUser));
+      prefetchToday();
+      const [profile, basics] = await Promise.all([profileP, readGlobalBasics()]);
+      if (loginLoad !== login) return;
+      if (login.hasSnapshot && profile.role !== myProfile.role) {
+        todayCache.clear(); weekCache.clear();
+        applyGlobals({});
+        login.hasSnapshot = false;
+      }
+      myProfile = profile;
+      applyBasicGlobals(basics);
       showAppShell();
+      if (!login.hasSnapshot) {
+        $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
+        $("todayStats").textContent = "";
+      }
       initSettingsUI();
-      switchView("today");
-      hideSplash(true);
-      fromSnapshot = true;
-      console.info("[OPENMUSIC load] hiện từ bản lưu trên máy:", Math.round(performance.now()) + "ms sau khi mở trang");
-    }
-    // 2) Hồ sơ, dữ liệu chung và lịch tuần này tải CÙNG LÚC từ Supabase (cập nhật đè lên bản lưu)
-    const profileP = traceDataLoad('Hồ sơ đăng nhập', () => B.ensureProfile(user))
-      .then((p) => { if (currentUid === loginId) myProfile = p; return p; });
-    const globalsP = loadGlobals(profileP);
-    prefetchToday();
-    globalsP.catch(() => {});   // lỗi vẫn được bắt ở "await globalsP" bên dưới; dòng này chỉ tránh cảnh báo unhandled
-    const profile = await profileP;
-    if (currentUid !== loginId) return;
-    myProfile = profile;
-    if (!fromSnapshot) {
-      showAppShell();
-      $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
-    } else showAppShell();   // vai trò/tên có thể đã đổi
-
-    await globalsP;
-    if (currentUid !== loginId) return;
-    applyRoleUI();
-    initSettingsUI();
-    switchView(fromSnapshot ? currentView : "today");   // vẽ lại trang đang xem bằng dữ liệu mới
-    // mở từ thông báo đẩy (vd "/?view=trials") -> vào thẳng trang đó
-    const wanted = new URLSearchParams(location.search).get("view");
-    if (wanted && PAGE_TITLE[wanted] && (wanted !== "trials" || isAdmin())) {
-      switchView(wanted);
-      try { history.replaceState(null, "", location.pathname); } catch (_) {}
-    }
-    hideSplash();
-    startReminderLoop();
-    refreshDevicePush();
+      const view = login.hasSnapshot ? currentView : "today";
+      // mở từ thông báo đẩy (vd "/?view=trials") -> vào thẳng trang đó
+      const wanted = new URLSearchParams(location.search).get("view");
+      if (wanted && PAGE_TITLE[wanted] && (wanted !== "trials" || isAdmin())) {
+        switchView(wanted);
+        try { history.replaceState(null, "", location.pathname); } catch (_) {}
+      } else switchView(view);
+      hideSplash();
+      startReminderLoop();
+      refreshDevicePush();
+      await loadLoginDetails(login);
     } catch (error) {
-      if (currentUid !== loginId) return;
-      if (fromSnapshot) {   // mất mạng nhưng đã có bản lưu -> vẫn dùng được, chỉ báo nhẹ
+      if (loginLoad !== login) return;
+      if (login.hasSnapshot) {   // mất mạng nhưng đã có bản lưu -> vẫn dùng được, chỉ báo nhẹ
+        loginLoad = null;
         toast("Không kết nối được máy chủ — đang hiển thị dữ liệu đã lưu trên máy.", "err");
         startReminderLoop();
         return;
       }
+      loginLoad = null;
       currentUid = null;
       $("app").classList.add("hidden");
       showAuth(); setAuthMode('login');
@@ -530,9 +541,13 @@
     earlyUid = null;
     try { localStorage.removeItem("om-last-uid"); } catch (_) {}
     user = null; currentUid = null; myProfile = null;
+    loginLoad = null;
     profilesList = []; profilesById = {}; teachers = []; teachersById = {}; myTeacher = null;
     students = []; studentsById = {}; presentByStudent = {};
     todayCache.clear(); weekCache.clear();
+    todayPrefetch = null;
+    pendingAttendance.clear();
+    todayRenderedDay = null;
     clearSnapshots();   // xóa bản lưu trên máy khi đăng xuất
     todayRequest++; weekRequest++; profitRequest++; salaryRequest++;
     allPayments = []; paidByStudent = {}; coursesByStudent = {}; attRowsByStudent = {}; courseInfo = {}; settings = {}; teacherStatsById = {};
@@ -616,55 +631,101 @@
     } finally { clearTimeout(timer); }
   }
 
-  // pendingProfile (lúc đăng nhập): hồ sơ đang tải song song — các bảng không phụ thuộc vai trò
-  // bắt đầu tải ngay, chỉ phần riêng của admin (tài khoản, học phí) chờ biết vai trò.
-  async function loadGlobals(pendingProfile) {
-    const loadUid = currentUid;
-    const adminOnly = (label, read, fallback) => {
-      const go = () => isAdmin() ? traceDataLoad(label, read) : fallback();
-      return pendingProfile ? pendingProfile.then(go) : go();
-    };
-    // Start all independent reads together; attendance supplies present counts too.
-    // lịch hẹn học thử (admin): chưa chạy migration 7 -> coi như chưa có lịch hẹn, không chặn app
-    const trialsP = B.listTrials
-      ? adminOnly('Hẹn học thử', () => B.listTrials().then((r) => ({ data: r.data || [] })), () => ({ data: [] }))
-      : { data: [] };
-    const [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes] = await Promise.all([
+  async function readGlobalBasics() {
+    const [teachers, students, settings, courses] = await Promise.all([
       traceDataLoad('Giáo viên', () => B.listTeachers()),
       traceDataLoad('Học sinh', () => B.listStudents()),
-      adminOnly('Tài khoản', () => B.listProfiles(), () => ({data: myProfile ? [myProfile] : []})),
       traceDataLoad('Cài đặt', () => B.getSettings()),
-      traceDataLoad('Thống kê giáo viên', () => B.teacherStats()),
       traceDataLoad('Khóa học', () => B.listCourses()),
-      adminOnly('Học phí', () => B.listPayments(), () => ({data: []})),
-      traceDataLoad('Lịch sử điểm danh', () => B.listAttendanceWithDates()),
     ]);
-    if (currentUid !== loadUid) return;
-    const failed = [tRes, sRes, pRes, setRes, tsRes, coRes, payRes, attRes].find(result => result.error);
-    if (failed) throw failed.error;
-    if (currentUid !== loadUid) return;
-    const trRes = await trialsP;
-    if (currentUid !== loadUid) return;
-    applyGlobals({ teachers: tRes.data, students: sRes.data, profiles: pRes.data, settings: setRes.data, teacherStats: tsRes.data,
-      courses: coRes.data, payments: payRes.data, att: attRes.data, trials: trRes.data });
-    saveSnapshot();
+    return { teachers: teachers.data, students: students.data, settings: settings.data, courses: courses.data };
   }
-  // Đổ dữ liệu chung vào app — dùng chung cho dữ liệu mới từ Supabase và bản lưu trên máy (mở app tức thì)
+
+  async function readGlobalDetails() {
+    const adminOnly = (label, read, fallback = () => []) => {
+      return isAdmin() ? traceDataLoad(label, read) : { data: fallback(myProfile) };
+    };
+    // Một số cơ sở chưa có bảng lịch hẹn học thử.
+    const [profiles, teacherStats, payments, attendance, trials] = await Promise.all([
+      adminOnly('Tài khoản', () => B.listProfiles(), profile => profile ? [profile] : []),
+      traceDataLoad('Thống kê giáo viên', () => B.teacherStats()),
+      adminOnly('Học phí', () => B.listPayments()),
+      traceDataLoad('Lịch sử điểm danh', () => B.listAttendanceWithDates()),
+      B.listTrials ? adminOnly('Hẹn học thử', async () => ({ data: (await B.listTrials()).data || [] })) : { data: [] },
+    ]);
+    return { profiles: profiles.data, teacherStats: teacherStats.data, payments: payments.data, att: attendance.data, trials: trials.data };
+  }
+
+  function finishLoginDetails(login, { data, error }) {
+    if (loginLoad !== login || login.details !== "loading") return;
+    if (error) {
+      login.details = "error";
+      login.attendanceChanges = [];
+      if (login.hasSnapshot) toast("Không thể cập nhật lịch sử và báo cáo. Đang hiển thị dữ liệu đã lưu.", "err");
+      if (DETAIL_VIEWS.has(currentView)) switchView(currentView);
+      if (currentView === "notify" || $("notificationsDialog").open) renderNotifyFrom(remindCache.scheds);
+      return;
+    }
+    applyGlobalDetails(data, login.attendanceChanges);
+    login.details = "ready";
+    login.attendanceChanges = [];
+    saveSnapshot();
+    if (DETAIL_VIEWS.has(currentView)) switchView(currentView);
+    else if (currentView === "today") refreshTodayDetails();
+    else if (currentView === "schedule" && !$("tkbWrap").classList.contains("loading")) renderWeek();
+    if (currentView === "notify" || $("notificationsDialog").open) renderNotifyFrom(remindCache.scheds);
+    updateBadgeFromCache();
+  }
+
+  async function loadLoginDetails(login) {
+    const result = await readGlobalDetails().then(data => ({ data }), error => ({ error }));
+    finishLoginDetails(login, result);
+  }
+
+  function retryLoginDetails() {
+    const login = loginLoad;
+    if (login?.details !== "error") return;
+    login.details = "loading";
+    switchView(currentView);
+    return loadLoginDetails(login);
+  }
+
+  async function loadGlobals() {
+    const login = loginLoad;
+    const loadUid = currentUid;
+    const [basics, details] = await Promise.all([readGlobalBasics(), readGlobalDetails()]);
+    if (currentUid !== loadUid || loginLoad !== login) return;
+    applyBasicGlobals(basics);
+    if (login?.details === "loading") finishLoginDetails(login, { data: details });
+    else {
+      applyGlobalDetails(details);
+      if (login) login.details = "ready";
+      saveSnapshot();
+    }
+  }
+
   function applyGlobals(raw) {
+    applyBasicGlobals(raw);
+    applyGlobalDetails(raw);
+  }
+
+  function applyBasicGlobals(raw) {
     coursesByStudent = {};
     (raw.courses || []).forEach((c) => (coursesByStudent[c.student_id] || (coursesByStudent[c.student_id] = [])).push(c));
     Object.values(coursesByStudent).forEach((l) => l.sort((a, b) => a.seq - b.seq));
     settings = raw.settings || {};
-    teacherStatsById = raw.teacherStats || {};
     teachers = raw.teachers || [];
     teachersById = {}; teachers.forEach((t) => (teachersById[t.id] = t));
     students = (raw.students || []).slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"));
     studentsById = {}; students.forEach((s) => (studentsById[s.id] = s));
+    myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
+    bumpStudents();
+  }
+
+  function applyGlobalDetails(raw, attendanceChanges = []) {
+    teacherStatsById = raw.teacherStats || {};
     profilesList = raw.profiles || [];
     profilesById = {}; profilesList.forEach((p) => (profilesById[p.id] = p));
-    presentByStudent = {};
-    (raw.att || []).forEach(a => { if (a.present === true) presentByStudent[a.student_id] = (presentByStudent[a.student_id] || 0) + 1; });
-    myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
 
     allPayments = []; paidByStudent = {};
     attRowsByStudent = {}; courseInfo = {};
@@ -678,6 +739,11 @@
       });
     }
     (raw.att || []).forEach((r) => (attRowsByStudent[r.student_id] || (attRowsByStudent[r.student_id] = [])).push(r));
+    attendanceChanges.forEach(updateAttendanceHistory);
+    presentByStudent = {};
+    for (const [studentId, rows] of Object.entries(attRowsByStudent)) {
+      presentByStudent[studentId] = rows.filter(a => a.present === true).length;
+    }
     students.forEach((s) => rebuildCourseInfo(s.id));
     bumpStudents();
   }
@@ -709,6 +775,7 @@
   })();
   let snapTimer = null;
   function saveSnapshot() {
+    if (loginLoad && loginLoad.details !== "ready") return;
     if (!currentUid || !myProfile || !students.length && !teachers.length) return;
     const uid = currentUid;
     clearTimeout(snapTimer);
@@ -766,6 +833,11 @@
   }
   window.addEventListener("resize", () => moveTabPill(false));
 
+  const DETAIL_VIEWS = new Set(["students", "teachers", "tuition", "trials"]);
+  function detailsUnavailable() {
+    return loginLoad && loginLoad.details !== "ready" && !loginLoad.hasSnapshot;
+  }
+
   function switchView(view) {
     const changed = currentView !== view;
     currentView = view;
@@ -775,13 +847,21 @@
     moveTabPill(changed);
     // Không dùng View Transitions: nó chụp cả trang (đo thực tế: trang Học sinh 2,4s). Trang mới chỉ
     // mờ dần bằng CSS (.view animation) — rẻ, mượt trên iPhone.
-    document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
+    const waitForDetails = DETAIL_VIEWS.has(view) && detailsUnavailable();
+    document.querySelectorAll(".view").forEach((v) => (v.hidden = waitForDetails || v.id !== "view-" + view));
     $("pageTitle").textContent = PAGE_TITLE[view] || "";
     $("heroTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
     $("topViewTitle").textContent = HERO_TITLE[view] || PAGE_TITLE[view] || "";
-    $("studentCount").hidden = view !== "students";
-    $("pageSearchBtn").hidden = !['students', 'teachers', 'tuition', 'trials'].includes(view);
+    $("studentCount").hidden = waitForDetails || view !== "students";
+    $("pageSearchBtn").hidden = waitForDetails || !DETAIL_VIEWS.has(view);
+    $("detailsStatus").hidden = !waitForDetails;
+    if (waitForDetails) {
+      const failed = loginLoad.details === "error";
+      $("detailsMessage").textContent = failed ? "Không thể tải dữ liệu chi tiết." : "Đang tải dữ liệu chi tiết…";
+      $("retryDetails").hidden = !failed;
+    }
     closeSidebar();
+    if (waitForDetails) return;
     if (view === "today") loadToday();
     else if (view === "schedule") { fillTeacherFilter(); setViewDate(viewDate); }
     else if (view === "students") renderStudents();
@@ -797,7 +877,8 @@
   // =====================================================================
   //  HÔM NAY & ĐIỂM DANH
   // =====================================================================
-  let todayScheds = [], todayAtt = [];
+  let todayScheds = [], todayAtt = [], todayRenderedDay = null, attendanceWriteVersion = 0;
+  const pendingAttendance = new Map();
 
   // Được phép điểm danh/sửa ngày đang xem không?
   function canEditAttendance() {
@@ -822,11 +903,13 @@
 
   async function loadToday() {
     const request = ++todayRequest;
+    const writeVersion = attendanceWriteVersion;
     $("todayTitle").textContent = `${DOW[attDate.getDay()]}, ${attDate.getDate()} tháng ${attDate.getMonth() + 1}`;
     $("todayDate").textContent = "";
     $("attDatePicker").value = dmy(attDate);
     const tf = scheduleTeacherFilter();
     if (tf === "__none__") {
+      todayRenderedDay = null;
       renderWeekStrip([]);
       $("todayList").innerHTML = '<div class="empty"><div class="big">🔗</div>Tài khoản của bạn chưa được gắn vào giáo viên nào.<br>Hãy nhờ Admin gắn ở mục “Giáo viên”.</div>';
       $("todayStats").innerHTML = "";
@@ -843,6 +926,10 @@
       todayScheds = hit.scheds.filter((s) => s.schedule_date === t);
       todayAtt = hit.atts[t];
       renderToday();
+    } else if (todayRenderedDay !== t) {
+      todayRenderedDay = null;
+      $("todayList").innerHTML = '<div class="state" role="status">Đang tải lịch học…</div>';
+      $("todayStats").textContent = "";
     }
     // dùng dữ liệu tải trước lúc đăng nhập (1 lần, đúng ngày) nếu có
     const pre = todayPrefetch && todayPrefetch.key === t ? todayPrefetch : null;
@@ -866,6 +953,10 @@
       if (request !== todayRequest) return;
       if (attError) { if (!shown) $("todayList").innerHTML = `<div class="empty">Không thể tải điểm danh: ${esc(attError.message)}</div>`; return; }
       atts = data || [];
+    }
+    if (writeVersion !== attendanceWriteVersion) {
+      if (currentView === "today") return loadToday();
+      return;
     }
     const sig = JSON.stringify([weekScheds, atts]);
     const entry = todayCache.get(ck) || { scheds: [], atts: {}, sig: {} };
@@ -910,12 +1001,26 @@
     $("wsDays").innerHTML = h;
   }
 
-  function renderToday() {
-    // thống kê
+  function refreshTodayDetails() {
+    if (currentView !== "today" || todayRenderedDay !== ymd(attDate)) return;
+    const active = document.activeElement;
+    if ($("todayList").contains(active) && active.matches("input")) {
+      active.addEventListener("blur", () => queueMicrotask(refreshTodayDetails), { once: true });
+      return;
+    }
+    renderToday();
+  }
+
+  function renderTodayStats() {
     let present = 0, absent = 0, none = 0, late = 0;
     todayAtt.forEach((a) => { if (a.present === true) { present++; if (a.late) late++; } else if (a.present === false) absent++; else none++; });
     $("todayStats").innerHTML = [[todayScheds.length,"lớp","primary"],[present,late ? `có mặt (${late} muộn)` : "có mặt","good"],[absent,"vắng","bad"],[none,"chưa ĐD","warn"]]
       .map(([n,label,cls]) => `<span class="today-stat ${cls}" aria-label="${n} ${label}"><b>${n}</b><span>${label}</span></span>`).join("");
+  }
+
+  function renderToday() {
+    todayRenderedDay = ymd(attDate);
+    renderTodayStats();
     const isToday = ymd(attDate) === ymd(startOfToday());
     $("todayDate").textContent = "";
 
@@ -932,63 +1037,85 @@
   }
   function chip(n, l, cls) { return `<div class="stat-chip ${cls || ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
 
+  function attendanceRowId(scheduleId, studentId) { return `att-${scheduleId}|${studentId}`; }
+
+  function attendanceSubtitle(scheduleId, studentId) {
+    const st = studentsById[studentId];
+    if (!st) return "";
+    const subject = esc(st.subject || "");
+    const bd = detailsUnavailable() ? null : courseInfo[studentId];
+    if (bd) {
+      for (const { c, items } of bd.courses) {
+        const item = items.find(it => it.a.schedule_id === scheduleId);
+        if (item) return subject + ` · Khóa ${c.seq} · ${item.no ? `buổi ${item.no}/${c.total_sessions}` : "không trừ buổi"}`;
+      }
+      if (bd.extra.some(it => it.a.schedule_id === scheduleId)) return subject + ' · <b class="extra-txt">Buổi lẻ — hết khóa</b>';
+    }
+    return subject;
+  }
+
+  function attendanceExcusedOption(scheduleId, a, disabled) {
+    if (detailsUnavailable() || studentRule(a.student_id) !== "present_unexcused") return "";
+    return `<label class="att-exc"><input type="checkbox" data-attexc="${scheduleId}|${a.student_id}"${a.excused ? " checked" : ""}${disabled}/> Có phép — không trừ buổi</label>`;
+  }
+
+  function attendanceRow(s, a) {
+    const rowId = attendanceRowId(s.id, a.student_id);
+    const saving = pendingAttendance.has(rowId);
+    const disabled = saving ? " disabled" : "";
+    const nm = studentsById[a.student_id]?.full_name ?? "(học sinh đã xóa)";
+    const sub = attendanceSubtitle(s.id, a.student_id);
+    const late = a.present === true && a.late;
+    const status = late ? `<span class="att-status late">⏱ Muộn${a.late_minutes ? " " + a.late_minutes + " phút" : ""}</span>`
+      : a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
+      : a.present === false ? '<span class="att-status absent">✕ Vắng</span>'
+      : '<span class="att-status none">• Chưa điểm danh</span>';
+    // đi muộn -> ô nhập số phút muộn (lưu khi rời ô)
+    const lateRow = late
+      ? `<div class="att-late-row"><label>Muộn <input class="att-late-input" type="number" inputmode="numeric" min="0" max="600" step="1" data-latemin="${s.id}|${a.student_id}" value="${a.late_minutes ?? ""}" placeholder="?"${disabled}> phút</label></div>`
+      : "";
+    // HS vắng -> hiện ô ghi lý do nghỉ (lưu lại để truy xuất trong PDF của HS)
+    // khóa tính "có mặt + vắng không phép" -> cho đánh dấu vắng CÓ PHÉP (không trừ buổi)
+    const noteRow = a.present === false
+      ? `<div class="att-note-row"><input class="att-note-input" type="text" maxlength="200" data-attnote="${s.id}|${a.student_id}" value="${esc(a.note || "")}" placeholder="Lý do nghỉ (VD: ốm, bận, xin phép…) — lưu vào PDF của học sinh"${disabled}>${attendanceExcusedOption(s.id, a, disabled)}</div>`
+      : "";
+    return `<div class="att-item" id="${esc(rowId)}"><div class="att-row">` +
+      `<div class="att-name"><div class="att-name-top"><span class="n">${esc(nm)}</span>${status}<span class="att-saving" role="status">${saving ? "Đang lưu…" : ""}</span></div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
+      `<div class="att-actions" aria-busy="${saving}">` +
+      `<button class="att-btn yes ${a.present === true && !late ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt (đúng giờ)"${disabled}>✓</button>` +
+      `<button class="att-btn late ${late ? "on" : ""}" data-attlate="${s.id}|${a.student_id}" title="Đi muộn"${disabled}>⏱</button>` +
+      `<button class="att-btn no ${a.present === false ? "on" : ""}" data-att="${s.id}|${a.student_id}|0" title="Vắng"${disabled}>✕</button>` +
+      `<button class="att-btn rm" data-attrm="${s.id}|${a.student_id}" title="Bỏ khỏi lớp"${disabled}>🗑</button>` +
+      `</div></div>` + lateRow + noteRow + `</div>`;
+  }
+
+  function teacherAttendanceHint(s, rows) {
+    const present = rows.filter(a => a.present === true).length;
+    if (s.teacher_present !== true || (rows.length && present === rows.length)) return "";
+    const label = rows.length ? `${present}/${rows.length} có mặt` : "chưa có HS";
+    return `<span class="tp-hint" title="Lớp không đủ học sinh – vẫn tính buổi dạy cho lương">${label}</span>`;
+  }
+
+  function classAttendanceBadge(rows) {
+    if (!rows.length) return "";
+    const marked = rows.filter(a => a.present === true || a.present === false).length;
+    return marked === rows.length ? `<span class="cc-badge done">${CHECK_ICON} Đã điểm danh</span>`
+      : `<span class="cc-badge pending" aria-label="Chưa điểm danh đầy đủ: ${marked}/${rows.length}">Chưa ĐD ${marked}/${rows.length}</span>`;
+  }
+
   function classCard(s, now, locked) {
     const rows = attFor(s.id);
     const endDt = new Date(`${s.schedule_date}T${s.end_time}`);
     const isPast = endDt < now;
     const tp = s.teacher_present;
-    // Quy tắc màu nút "Có dạy": XANH khi đủ (mọi HS đều có mặt), CAM khi vẫn dạy nhưng KHÔNG đủ HS.
-    const inClassCount = rows.length;
-    const presentCount = rows.filter((a) => a.present === true).length;
-    const allPresent = inClassCount > 0 && presentCount === inClassCount;
-    const partial = tp === true && !allPresent;
     const tpToggle =
       `<span class="tp-label">Giáo viên:</span><div class="tp-toggle" data-tp="${s.id}">` +
       `<button class="yes ${tp === true ? "on" : ""}" data-tpv="1" aria-pressed="${tp === true}">Dạy</button>` +
       `<button class="no ${tp === false ? "on" : ""}" data-tpv="0" aria-pressed="${tp === false}">Nghỉ</button></div>` +
       (tp == null ? '<span class="tp-unmarked">Chưa xác nhận</span>' : '') +
-      (partial ? `<span class="tp-hint" title="Lớp không đủ học sinh – vẫn tính buổi dạy cho lương">${inClassCount ? presentCount + "/" + inClassCount + " có mặt" : "chưa có HS"}</span>` : "");
+      teacherAttendanceHint(s, rows);
 
-    const studRows = rows.length
-      ? rows.map((a) => {
-          const st = studentsById[a.student_id];
-          const nm = st ? st.full_name : "(học sinh đã xóa)";
-          // admin: buổi này là buổi số mấy của khóa nào (hoặc buổi lẻ)
-          let courseTag = "";
-          const bd = courseInfo[a.student_id];
-          if (bd) {
-            let hit = null;
-            bd.courses.forEach((x) => x.items.forEach((it) => { if (it.a.schedule_id === s.id) hit = { seq: x.c.seq, no: it.no, total: x.c.total_sessions }; }));
-            const ex = !hit && bd.extra.find((it) => it.a.schedule_id === s.id);
-            if (hit) courseTag = hit.no ? ` · Khóa ${hit.seq} · buổi ${hit.no}/${hit.total}` : ` · Khóa ${hit.seq} · không trừ buổi`;
-            else if (ex) courseTag = ' · <b class="extra-txt">Buổi lẻ — hết khóa</b>';
-          }
-          const sub = st ? esc(st.subject || "") + courseTag : "";
-          const late = a.present === true && a.late;
-          const status = late ? `<span class="att-status late">⏱ Muộn${a.late_minutes ? " " + a.late_minutes + " phút" : ""}</span>`
-            : a.present === true ? '<span class="att-status present">✓ Có mặt</span>'
-            : a.present === false ? '<span class="att-status absent">✕ Vắng</span>'
-            : '<span class="att-status none">• Chưa điểm danh</span>';
-          // đi muộn -> ô nhập số phút muộn (lưu khi rời ô)
-          const lateRow = late
-            ? `<div class="att-late-row"><label>Muộn <input class="att-late-input" type="number" inputmode="numeric" min="0" max="600" step="1" data-latemin="${s.id}|${a.student_id}" value="${a.late_minutes ?? ""}" placeholder="?"> phút</label></div>`
-            : "";
-          // HS vắng -> hiện ô ghi lý do nghỉ (lưu lại để truy xuất trong PDF của HS)
-          // khóa tính "có mặt + vắng không phép" -> cho đánh dấu vắng CÓ PHÉP (không trừ buổi)
-          const excRow = studentRule(a.student_id) === "present_unexcused"
-            ? `<label class="att-exc"><input type="checkbox" data-attexc="${s.id}|${a.student_id}" ${a.excused ? "checked" : ""}/> Có phép — không trừ buổi</label>` : "";
-          const noteRow = a.present === false
-            ? `<div class="att-note-row"><input class="att-note-input" type="text" maxlength="200" data-attnote="${s.id}|${a.student_id}" value="${esc(a.note || "")}" placeholder="Lý do nghỉ (VD: ốm, bận, xin phép…) — lưu vào PDF của học sinh">${excRow}</div>`
-            : "";
-          return `<div class="att-item"><div class="att-row">` +
-            `<div class="att-name"><div class="att-name-top"><span class="n">${esc(nm)}</span>${status}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>` +
-            `<div class="att-actions">` +
-            `<button class="att-btn yes ${a.present === true && !late ? "on" : ""}" data-att="${s.id}|${a.student_id}|1" title="Có mặt (đúng giờ)">✓</button>` +
-            `<button class="att-btn late ${late ? "on" : ""}" data-attlate="${s.id}|${a.student_id}" title="Đi muộn">⏱</button>` +
-            `<button class="att-btn no ${a.present === false ? "on" : ""}" data-att="${s.id}|${a.student_id}|0" title="Vắng">✕</button>` +
-            `<button class="att-btn rm" data-attrm="${s.id}|${a.student_id}" title="Bỏ khỏi lớp">🗑</button>` +
-            `</div></div>` + lateRow + noteRow + `</div>`;
-        }).join("")
+    const studRows = rows.length ? rows.map(a => attendanceRow(s, a)).join("")
       : '<div class="class-empty-students">Chưa có học sinh trong lớp này.</div>';
 
     // học sinh có thể thêm vào lớp
@@ -1002,10 +1129,7 @@
     const names = rows.map((a) => studentsById[a.student_id] ? studentsById[a.student_id].full_name : "").filter(Boolean);
     const title = names.length ? (names.length > 3 ? names.slice(0, 3).join(" · ") + ` +${names.length - 3}` : names.join(" · "))
       : (s.class_name ? "Lớp " + s.class_name : s.subject);
-    const marked = rows.filter((a) => a.present === true || a.present === false).length;
-    const badge = !rows.length ? ""
-      : marked === rows.length ? `<span class="cc-badge done">${CHECK_ICON} Đã điểm danh</span>`
-      : `<span class="cc-badge pending" aria-label="Chưa điểm danh đầy đủ: ${marked}/${rows.length}">Chưa ĐD ${marked}/${rows.length}</span>`;
+    const badge = classAttendanceBadge(rows);
     const [sh, sm] = hhmm(s.start_time).split(":").map(Number), [eh, em] = hhmm(s.end_time).split(":").map(Number);
     const dur = (eh * 60 + em) - (sh * 60 + sm);
     const meta = [teacherDisplay(s), s.class_name && names.length ? "Lớp " + s.class_name : "", s.room || ""].filter(Boolean).map(esc).join(" · ");
@@ -1038,46 +1162,115 @@
     const sel = document.querySelector(`[data-addsel="${scheduleId}"]`); if (!sel) return;
     sel.innerHTML = addOptions(students.filter((st) => !inClass.has(st.id)), q);
   }
+  function setAttendanceSaving(row, saving) {
+    if (!row) return;
+    row.querySelector(".att-saving").textContent = saving ? "Đang lưu…" : "";
+    row.querySelector(".att-actions").setAttribute("aria-busy", String(saving));
+    row.querySelectorAll("button, input").forEach(control => { control.disabled = saving; });
+  }
+
+  // Một buổi được tính có thể làm đổi số thứ tự hoặc quy tắc của buổi khác cùng học sinh.
+  function refreshRelatedAttendance(scheduleId, studentId) {
+    for (const record of todayAtt) {
+      if (record.student_id !== studentId || record.schedule_id === scheduleId) continue;
+      const rowId = attendanceRowId(record.schedule_id, studentId);
+      const row = document.getElementById(rowId);
+      if (!row) continue;
+      const name = row.querySelector(".att-name");
+      const subtitle = name.querySelector(".s");
+      const html = attendanceSubtitle(record.schedule_id, studentId);
+      if (subtitle && html) subtitle.innerHTML = html;
+      else if (subtitle) subtitle.remove();
+      else if (html) name.insertAdjacentHTML("beforeend", `<div class="s">${html}</div>`);
+      const note = row.querySelector(".att-note-row");
+      if (note) {
+        const option = note.querySelector(".att-exc");
+        const next = attendanceExcusedOption(record.schedule_id, record, pendingAttendance.has(rowId) ? " disabled" : "");
+        if (option && !next) option.remove();
+        else if (!option && next) note.insertAdjacentHTML("beforeend", next);
+      }
+    }
+  }
+
+  function refreshAttendanceRow(schedule, studentId, patch) {
+    const lists = new Set();
+    for (const { scheds, atts } of todayCache.values()) {
+      if (atts[schedule.schedule_date] && scheds.some(s => s.id === schedule.id)) {
+        lists.add(atts[schedule.schedule_date]);
+      }
+    }
+    if (todayRenderedDay === schedule.schedule_date) lists.add(todayAtt);
+    for (const rows of lists) {
+      const record = rows.find(a => a.schedule_id === schedule.id && a.student_id === studentId);
+      if (record) Object.assign(record, patch);
+    }
+    refreshRelatedAttendance(schedule.id, studentId);
+
+    const row = document.getElementById(attendanceRowId(schedule.id, studentId));
+    const record = todayAtt.find(a => a.schedule_id === schedule.id && a.student_id === studentId);
+    if (!row || !record) return;
+    const card = row.closest(".class-card");
+    const rows = attFor(schedule.id);
+    row.outerHTML = attendanceRow(schedule, record);
+    card.querySelector(".cc-badge")?.remove();
+    card.querySelector(".cc-title").insertAdjacentHTML("afterend", classAttendanceBadge(rows));
+    card.querySelector(".tp-hint")?.remove();
+    card.querySelector(".tp-toggle").insertAdjacentHTML("afterend", teacherAttendanceHint(schedule, rows));
+    renderTodayStats();
+  }
+
+  async function saveStudentAttendance(scheduleId, studentId, patch, write) {
+    if (!canEditAttendance()) { toast("Chỉ điểm danh được từ hôm nay trở đi.", "err"); return false; }
+    const schedule = todayScheds.find(s => s.id === scheduleId);
+    const rowId = attendanceRowId(scheduleId, studentId);
+    if (!schedule || pendingAttendance.has(rowId)) return false;
+    const save = {};
+    pendingAttendance.set(rowId, save);
+    setAttendanceSaving(document.getElementById(rowId), true);
+    try {
+      const { error } = await write();
+      if (error) throw error;
+    } catch (error) {
+      if (pendingAttendance.get(rowId) !== save) return false;
+      pendingAttendance.delete(rowId);
+      const row = document.getElementById(rowId);
+      setAttendanceSaving(row, false);
+      const excused = row?.querySelector("[data-attexc]");
+      if (excused) excused.checked = !!todayAtt.find(a => a.schedule_id === scheduleId && a.student_id === studentId)?.excused;
+      const hint = /excused/.test(error.message) ? " — cần chạy supabase-migration-6.sql" : "";
+      toast("Lỗi điểm danh: " + error.message + hint, "err");
+      return false;
+    }
+    if (pendingAttendance.get(rowId) !== save) return false;
+    pendingAttendance.delete(rowId);
+    attendanceWriteVersion++;
+    patchAttCache(scheduleId, studentId, patch, schedule);
+    refreshAttendanceRow(schedule, studentId, patch);
+    return true;
+  }
+
   async function markExcused(scheduleId, studentId, excused) {
-    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
-    const { error } = await B.setAttendanceExcused(scheduleId, studentId, excused, user.id);
-    if (error) return toast("Lỗi lưu: " + error.message + (/excused/.test(error.message) ? " — cần chạy supabase-migration-6.sql" : ""), "err");
-    const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
-    if (cur) cur.excused = excused;
-    patchAttCache(scheduleId, studentId, { excused });
-    renderToday();
-    toast(excused ? "Đã đánh dấu vắng có phép (không trừ buổi)." : "Đã bỏ có phép — buổi vắng này sẽ bị trừ.", "ok");
+    if (await saveStudentAttendance(scheduleId, studentId, { excused }, () => B.setAttendanceExcused(scheduleId, studentId, excused, user.id))) {
+      toast(excused ? "Đã đánh dấu vắng có phép (không trừ buổi)." : "Đã bỏ có phép — buổi vắng này sẽ bị trừ.", "ok");
+    }
   }
 
   async function markStudent(scheduleId, studentId, present) {
-    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
     const wasLate = !!(cur && cur.late);
-    // bấm lại nút đang bật -> bỏ chọn (về "chưa điểm danh"); đang "Muộn" mà bấm ✓ -> thành có mặt đúng giờ
+    // Bấm lại nút đang bật để bỏ chọn; đang muộn mà bấm ✓ thì thành có mặt đúng giờ.
     const newVal = (cur && cur.present === present && !wasLate) ? null : present;
-    // chỉ gửi cột late khi cần bỏ dấu muộn (DB chưa chạy migration 7 vẫn điểm danh bình thường)
     const extra = wasLate ? { late: false, late_minutes: null } : undefined;
-    const { error } = await B.setAttendance(scheduleId, studentId, newVal, user.id, extra);
-    if (error) return toast("Lỗi điểm danh: " + error.message, "err");
     const patch = Object.assign({ present: newVal }, extra || {});
-    if (cur) Object.assign(cur, patch);
-    else todayAtt.push(Object.assign({ schedule_id: scheduleId, student_id: studentId }, patch));
-    patchAttCache(scheduleId, studentId, patch);
-    renderToday();
+    await saveStudentAttendance(scheduleId, studentId, patch, () => B.setAttendance(scheduleId, studentId, newVal, user.id, extra));
   }
-  // ⏱ Đi muộn: bật -> có mặt + muộn (rồi nhập số phút); bấm lại -> về chưa điểm danh
+
   async function markLate(scheduleId, studentId) {
-    if (!canEditAttendance()) return toast("Chỉ điểm danh được từ hôm nay trở đi.", "err");
     const cur = todayAtt.find((a) => a.schedule_id === scheduleId && a.student_id === studentId);
     const late = !(cur && cur.present === true && cur.late);
-    const { error } = await B.setAttendanceLate(scheduleId, studentId, late, null, user.id);
-    if (error) return toast("Lỗi điểm danh: " + error.message + (/late/.test(error.message) ? " — cần chạy supabase-migration-7.sql" : ""), "err");
     const patch = { present: late ? true : null, late, late_minutes: null };
-    if (cur) Object.assign(cur, patch);
-    else todayAtt.push(Object.assign({ schedule_id: scheduleId, student_id: studentId }, patch));
-    patchAttCache(scheduleId, studentId, patch);
-    renderToday();
-    if (late) { const inp = document.querySelector(`[data-latemin="${scheduleId}|${studentId}"]`); if (inp) inp.focus(); }
+    const saved = await saveStudentAttendance(scheduleId, studentId, patch, () => B.setAttendanceLate(scheduleId, studentId, late, null, user.id));
+    if (saved && late && currentView === "today") document.getElementById(attendanceRowId(scheduleId, studentId))?.querySelector("[data-latemin]")?.focus();
   }
   async function saveLateMinutes(scheduleId, studentId, raw) {
     if (!canEditAttendance()) return;
@@ -2596,7 +2789,7 @@
   const courseAlertKey = (s, p) => `${s.id}:${p.seq}:${p.remaining === 0 || s.status === "completed" ? "done" : p.remaining}`;
   function notifyLists(scheds) {
     const cl = readCleared(), cs = new Set(cl.sched), cc = new Set(cl.course);
-    const alerts = students.map((s) => ({ s, p: studentProgress(s) }))
+    const alerts = (detailsUnavailable() ? [] : students).map((s) => ({ s, p: studentProgress(s) }))
       .filter((x) => x.p.total && (x.p.remaining <= 2 || x.s.status === "completed"))
       .sort((a, b) => a.p.remaining - b.p.remaining);
     // hẹn học thử hôm nay còn "Chờ" (admin)
@@ -2647,7 +2840,9 @@
     }).join("") : (trialsHtml ? "" : '<div class="empty">Không có thông báo lịch học mới.</div>'));
 
     // khóa học sắp / đã kết thúc
-    $("notifyCourses").innerHTML = alerts.length ? alerts.map(({ s, p }) => {
+    $("notifyCourses").innerHTML = detailsUnavailable()
+      ? `<div class="state" role="status">${loginLoad.details === "error" ? "Không thể tải lịch sử khóa học." : "Đang tải lịch sử khóa học…"}</div>`
+      : alerts.length ? alerts.map(({ s, p }) => {
       const done = p.remaining === 0 || s.status === "completed";
       return `<div class="info-card"><div class="ic-head"><div class="ic-avatar">${done ? "🎉" : "⚠️"}</div>` +
         `<div class="ic-title"><div class="nm">${esc(s.full_name)} ${done ? `<span class="tag-done">Hết khóa ${p.seq}</span>` : '<span class="tag-near">Còn ' + p.remaining + ' buổi</span>'}${p.extra ? ` <span class="tag-extra">${p.extra} buổi lẻ</span>` : ""}</div>` +
@@ -2879,6 +3074,7 @@
   //  GẮN SỰ KIỆN
   // =====================================================================
   function wireEvents() {
+    $("retryDetails").addEventListener("click", retryLoginDetails);
     $("pageSearchBtn").addEventListener('click', openPageSearch);
     $("pageSearchInput").addEventListener('input', renderPageSearch);
     $("pageSearchInput").addEventListener('keydown', e => { if (e.key === 'Enter') $("pageSearchDialog").close(); });

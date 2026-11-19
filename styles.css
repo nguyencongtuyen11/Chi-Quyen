@@ -972,8 +972,8 @@ body { isolation: isolate; }
 /* ===== MÀN CHỜ: nốt nhạc bay vào quanh logo ===== */
 .splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; align-content: center; gap: 26px;
   background: linear-gradient(145deg, var(--amb-1) 0%, var(--amb-2) 45%, var(--amb-3) 100%); overflow: hidden;
-  transition: opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1), filter .45s ease; }
-.splash.done { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
+  transition: opacity .16s ease; }
+.splash.done { opacity: 0; pointer-events: none; }
 .sp-stage { position: relative; width: 120px; height: 120px; }
 .sp-logo { position: absolute; inset: 0; width: 120px; height: 120px; border-radius: 30px; box-shadow: 0 16px 40px color-mix(in srgb, var(--primary) 30%, transparent);
   animation: spLogo .8s cubic-bezier(.34,1.56,.64,1) .45s both, spPulse 1.8s ease-in-out 1.3s infinite; }
@@ -1010,6 +1010,9 @@ body { isolation: isolate; }
 .att-btn.late { font-size: 14px; }
 .att-btn.late.on { background: var(--warn); color: #2a1500; border-color: transparent; }
 .att-status.late { background: var(--sang-bg); color: var(--sang-fg); }
+.att-saving { color: var(--muted-2); font-size: 11px; }
+.att-saving:empty { display: none; }
+.att-actions[aria-busy="true"] { opacity: .55; }
 .att-late-row { padding: 0 8px 9px; font-size: 13px; color: var(--muted); }
 .att-late-row label { display: inline-flex; align-items: center; gap: 8px; }
 .att-late-input { width: 74px; padding: 7px 10px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--card-solid) 75%, transparent); color: var(--text); font: inherit; font-size: 16px; text-align: center; }

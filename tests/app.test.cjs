@@ -5,7 +5,7 @@ const path = require('node:path');
 const {JSDOM,VirtualConsole} = require('jsdom');
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'app.js'),'utf8');
-async function fixture(email='admin@openmusic.vn') {
+async function fixture(email='admin@openmusic.vn', beforeLogin=()=>{}) {
   const errors=[];
   const virtualConsole=new VirtualConsole();
   virtualConsole.on('jsdomError',e=>errors.push(e.message));
@@ -22,6 +22,7 @@ async function fixture(email='admin@openmusic.vn') {
   const exposed=['traceDataLoad','loadGlobals','switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
   w.eval(source.replace('document.addEventListener("DOMContentLoaded", init);',`window.__test={${exposed.join(',')}};document.addEventListener("DOMContentLoaded", init);`));
   await settle();
+  await beforeLogin(w.Backend);
   await w.Backend.signIn(email,'123456');
   await settle();
   return {w,doc:w.document,api:w.__test,backend:w.Backend,errors,close:()=>dom.window.close()};
@@ -117,4 +118,124 @@ test('startup reads payments and attendance while teacher lookup is still pendin
 
 test('an unresponsive data read has a named error instead of infinite loading',async()=>{
  const f=await fixture();try{await assert.rejects(f.api.traceDataLoad('Lịch sử điểm danh',()=>new Promise(()=>{}),10),/Lịch sử điểm danh.*không phản hồi/);}finally{f.close();}
+});
+
+test('today renders while attendance history is pending and detail views wait for it', async () => {
+  let completeHistory;
+  const f = await fixture(undefined, async backend => {
+    const history = await backend.listAttendanceWithDates();
+    backend.listAttendanceWithDates = () => new Promise(resolve => {
+      completeHistory = () => resolve(history);
+    });
+  });
+  try {
+    assert.ok(f.doc.querySelector('#todayList .lesson'));
+    f.api.switchView('students');
+    assert.equal(f.doc.querySelector('#view-students').hidden, true);
+    assert.match(f.doc.querySelector('#detailsMessage').textContent, /Đang tải/);
+    completeHistory();
+    await settle();
+    assert.equal(f.doc.querySelector('#detailsStatus').hidden, true);
+    assert.equal(f.doc.querySelector('#view-students').hidden, false);
+    assert.match(f.doc.querySelector('#studentList').textContent, /Nguyễn An/);
+  } finally {
+    f.close();
+  }
+});
+
+test('attendance shows saving immediately and changes only the affected row after confirmation', async () => {
+  const f = await fixture();
+  try {
+    const [row, otherRow] = f.doc.querySelectorAll('#todayList .att-item');
+    const button = row.querySelector('.att-btn.yes');
+    const nextStatus = button.classList.contains('on') ? /Chưa điểm danh/ : /Có mặt/;
+    const original = f.backend.setAttendance.bind(f.backend);
+    let finishSave;
+    let calls = 0;
+    f.backend.setAttendance = (...args) => new Promise(resolve => {
+      calls++;
+      finishSave = () => resolve(original(...args));
+    });
+    button.click();
+    assert.equal(row.querySelector('.att-saving').textContent, 'Đang lưu…');
+    assert.equal(button.disabled, true);
+    button.click();
+    assert.equal(calls, 1);
+    finishSave();
+    await settle();
+    const updated = f.doc.getElementById(row.id);
+    assert.match(updated.querySelector('.att-status').textContent, nextStatus);
+    assert.equal(updated.querySelector('.att-saving').textContent, '');
+    assert.equal(f.doc.getElementById(otherRow.id), otherRow);
+
+    f.backend.setAttendance = async () => ({ error: { message: 'Mất kết nối' } });
+    updated.querySelector('.att-btn.yes').click();
+    await settle();
+    assert.equal(f.doc.getElementById(row.id), updated);
+    assert.equal(updated.querySelector('.att-btn.yes').disabled, false);
+    assert.match(updated.querySelector('.att-status').textContent, nextStatus);
+    assert.match(f.doc.querySelector('.toast').textContent, /Mất kết nối/);
+  } finally {
+    f.close();
+  }
+});
+
+test('marking an earlier lesson refreshes the same student’s later course number without replacing that row', async () => {
+  const f = await fixture(undefined, backend => backend.setAttendance('sc2', 's1', true, 'u-admin'));
+  try {
+    const early = f.doc.getElementById('att-sc1|s1');
+    const later = f.doc.getElementById('att-sc2|s1');
+    assert.match(later.querySelector('.s').textContent, /buổi 2\/12/);
+    early.querySelector('.att-btn.yes').click();
+    await settle();
+    assert.equal(f.doc.getElementById(later.id), later);
+    assert.match(later.querySelector('.s').textContent, /buổi 3\/12/);
+  } finally {
+    f.close();
+  }
+});
+
+test('a confirmed attendance save stays on its own day after navigation during the request', async () => {
+  const f = await fixture();
+  try {
+    const original = f.backend.setAttendance.bind(f.backend);
+    let finishSave;
+    f.backend.setAttendance = (...args) => new Promise(resolve => {
+      finishSave = () => resolve(original(...args));
+    });
+    f.doc.getElementById('att-sc1|s1').querySelector('.att-btn.yes').click();
+    f.api.setAttDate(new f.w.Date(2026, 9, 29));
+    await settle();
+    const nextDay = f.doc.querySelector('#todayList').innerHTML;
+    finishSave();
+    await settle();
+    assert.equal(f.doc.querySelector('#todayList').innerHTML, nextDay);
+    f.api.setAttDate(new f.w.Date(2026, 9, 28));
+    await settle();
+    assert.match(f.doc.getElementById('att-sc1|s1').querySelector('.att-status').textContent, /Có mặt/);
+  } finally {
+    f.close();
+  }
+});
+
+test('failed report data can be retried while today stays usable', async () => {
+  const f = await fixture(undefined, backend => {
+    const original = backend.listAttendanceWithDates.bind(backend);
+    let attempts = 0;
+    backend.listAttendanceWithDates = () => attempts++ === 0
+      ? Promise.resolve({ error: { message: 'Mất kết nối' } })
+      : original();
+  });
+  try {
+    assert.ok(f.doc.querySelector('#todayList .lesson'));
+    f.api.switchView('tuition');
+    assert.equal(f.doc.querySelector('#view-tuition').hidden, true);
+    assert.match(f.doc.querySelector('#detailsMessage').textContent, /Không thể tải/);
+    f.doc.querySelector('#retryDetails').click();
+    await settle();
+    assert.equal(f.doc.querySelector('#detailsStatus').hidden, true);
+    assert.equal(f.doc.querySelector('#view-tuition').hidden, false);
+  } finally {
+    f.close();
+  }
 });
