@@ -18,6 +18,7 @@ async function fixture(email='admin@openmusic.vn', beforeLogin=()=>{}) {
   w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
   w.setInterval=()=>0;
+  w.eval(w.document.querySelector('#themeBoot').textContent);
   w.eval(fs.readFileSync(path.join(root,'backend.js'),'utf8'));
   const exposed=['traceDataLoad','loadGlobals','switchView','setAttDate','setViewDate','startOfToday','ymd','dmyToYmd','courseBreakdown','calculateTuition','courseFeeQuote','setMoneyInput','readMoneyInput','openCourseModal','saveCourse','runSalary','runProfit','shiftReportMonth','renderTeachers','openPageSearch','renderPageSearch','markTeacher','openSidebar','closeSidebar','openScheduleModal','saveSchedule'];
   w.eval(source.replace('document.addEventListener("DOMContentLoaded", init);',`window.__test={${exposed.join(',')}};document.addEventListener("DOMContentLoaded", init);`));
@@ -31,6 +32,59 @@ async function settle(){for(let i=0;i<12;i++)await new Promise(resolve=>setImmed
 
 test('all main admin routes render without runtime errors',async()=>{
  const f=await fixture();try{for(const view of ['today','schedule','students','teachers','salary','tuition','profit','notify','settings']){f.api.switchView(view);await settle();assert.equal(f.doc.querySelector('#view-'+view).hidden,false);assert.ok(f.doc.querySelector('#topViewTitle').textContent);}assert.deepEqual(f.errors,[]);}finally{f.close();}
+});
+
+test('theme settings preview, save and reset personal colors for a teacher', async () => {
+  const f = await fixture('co.lan@openmusic.vn');
+  try {
+    f.api.switchView('settings');
+    const root = f.doc.documentElement;
+    const stored = () => f.w.localStorage.getItem('om-accent');
+    const blue = f.doc.querySelector('[data-accent-choice="#2563eb"]');
+    const reset = f.doc.querySelector('[data-accent-choice=""]');
+    const picker = f.doc.querySelector('#appearancePicker');
+    const hex = f.doc.querySelector('#appearanceHex');
+    const applyHex = () => f.doc.querySelector('#appearanceCustom').dispatchEvent(new f.w.Event('submit', { cancelable: true }));
+
+    assert.equal(reset.getAttribute('aria-pressed'), 'true');
+    blue.click();
+    assert.equal(root.dataset.accent, '#2563eb');
+    assert.equal(stored(), '#2563eb');
+    assert.equal(blue.getAttribute('aria-pressed'), 'true');
+    assert.equal(hex.value, '#2563EB');
+
+    picker.value = '#00ff00';
+    picker.dispatchEvent(new f.w.Event('input'));
+    assert.equal(root.dataset.accent, '#00ff00');
+    assert.equal(stored(), '#2563eb');
+    picker.dispatchEvent(new f.w.Event('change'));
+    assert.equal(stored(), '#00ff00');
+
+    hex.value = 'ABC';
+    applyHex();
+    assert.equal(stored(), '#aabbcc');
+    assert.equal(hex.value, '#AABBCC');
+    const light = f.doc.querySelector('meta[name="theme-color"]').content;
+    f.doc.querySelector('#themeBtn').click();
+    assert.equal(root.dataset.theme, 'dark');
+    assert.equal(root.dataset.accent, '#aabbcc');
+    assert.notEqual(f.doc.querySelector('meta[name="theme-color"]').content, light);
+
+    hex.value = 'invalid';
+    applyHex();
+    assert.equal(hex.getAttribute('aria-invalid'), 'true');
+    assert.equal(f.doc.querySelector('#appearanceError').hidden, false);
+    assert.equal(stored(), '#aabbcc');
+
+    reset.click();
+    assert.equal(root.dataset.theme, 'dark');
+    assert.equal(root.dataset.accent, undefined);
+    assert.equal(stored(), null);
+    assert.equal(reset.getAttribute('aria-pressed'), 'true');
+    assert.equal(f.doc.querySelector('meta[name="theme-color"]').content, '#0b1a18');
+  } finally {
+    f.close();
+  }
 });
 test('dates reject impossible calendar dates',async()=>{
  const f=await fixture();try{assert.equal(f.api.dmyToYmd('31/02/2026'),null);assert.equal(f.api.dmyToYmd('29/02/2028'),'2028-02-29');}finally{f.close();}

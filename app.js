@@ -258,18 +258,85 @@
   // ---------- THEME ----------
   function applyTheme(t) {
     t = t === 'dark' ? 'dark' : 'light';
-    document.documentElement.style.colorScheme = t;
-    document.documentElement.style.backgroundColor = t === 'dark' ? '#0b1a18' : '#e7efeb';
-    document.documentElement.setAttribute("data-theme", t);
+    const root = document.documentElement;
+    if (window.AppAppearance) {
+      if (root.dataset.theme !== t) window.AppAppearance.apply(t, root.dataset.accent);
+    } else {
+      // Hỗ trợ bản HTML cũ trong cache trong lúc PWA cập nhật.
+      const color = t === "dark" ? "#0b1a18" : "#e7efeb";
+      root.dataset.theme = t;
+      root.style.colorScheme = t;
+      root.style.backgroundColor = color;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", color);
+    }
     $("themeBtn").innerHTML = t === "dark" ? MOON : SUN;
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", t === "dark" ? "#0b1a18" : "#e7efeb");
+    if (currentView === "settings") renderAppearanceSettings();
     try { localStorage.setItem("om-theme", t); } catch (e) {}
   }
   function initTheme() {
     let t = "light";
     try { t = localStorage.getItem("om-theme") || "light"; } catch (e) {}
     applyTheme(t);
+  }
+
+  function setAppearanceError(invalid) {
+    $("appearanceError").hidden = !invalid;
+    const input = $("appearanceHex");
+    if (invalid) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  }
+
+  function renderAppearanceSettings() {
+    const presets = $("appearancePresets");
+    const appearance = window.AppAppearance;
+    if (!presets || !appearance) return;
+    const root = document.documentElement;
+    const accent = root.dataset.accent || "";
+    const color = accent || appearance.normalizeAccent(getComputedStyle(root).getPropertyValue("--primary")) || "#087f73";
+    const picker = $("appearancePicker");
+    if (picker.value !== color) picker.value = color;
+    $("appearanceHex").value = color.toUpperCase();
+    presets.querySelectorAll("[data-accent-choice]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.accentChoice === accent));
+    });
+    setAppearanceError(false);
+  }
+
+  function applyAccent(accent, persist) {
+    const root = document.documentElement;
+    if ((root.dataset.accent || "") !== accent) window.AppAppearance.apply(root.dataset.theme, accent);
+    if (persist) {
+      try {
+        if (accent) localStorage.setItem("om-accent", accent);
+        else localStorage.removeItem("om-accent");
+      } catch (_) {}
+    }
+    renderAppearanceSettings();
+  }
+
+  function wireAppearanceControls() {
+    const presets = $("appearancePresets");
+    const appearance = window.AppAppearance;
+    if (!presets || !appearance) return;
+    presets.addEventListener("click", event => {
+      const button = event.target.closest("[data-accent-choice]");
+      if (button) applyAccent(button.dataset.accentChoice, true);
+    });
+    const picker = $("appearancePicker");
+    picker.addEventListener("input", () => applyAccent(picker.value, false));
+    picker.addEventListener("change", () => applyAccent(picker.value, true));
+    $("appearanceHex").addEventListener("input", () => setAppearanceError(false));
+    $("appearanceCustom").addEventListener("submit", event => {
+      event.preventDefault();
+      const input = $("appearanceHex");
+      const accent = appearance.normalizeAccent(input.value);
+      if (!accent) {
+        setAppearanceError(true);
+        input.focus();
+        return;
+      }
+      applyAccent(accent, true);
+    });
   }
 
   // ---------- CÀI ĐẶT NHẮC LỊCH ----------
@@ -3026,7 +3093,13 @@
       `</div>`
     ).join("");
   }
-  function renderSettings() { initSettingsUI(); renderPricing(); fillRuleSelect($("courseRuleDefault"), defaultCountRule(), false); $("trialLeadMin").value = trialLeadMin(); }
+  function renderSettings() {
+    initSettingsUI();
+    renderAppearanceSettings();
+    renderPricing();
+    fillRuleSelect($("courseRuleDefault"), defaultCountRule(), false);
+    $("trialLeadMin").value = trialLeadMin();
+  }
   async function savePricing() {
     const dp = readRateInputs($("pricingBody"), "data-dp");
     const dt = readRateInputs($("pricingBody"), "data-dt");
@@ -3110,6 +3183,7 @@
     });
     // Theme
     $("themeBtn").addEventListener("click", () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"));
+    wireAppearanceControls();
 
     // Auth
     $("authPrimary").addEventListener("click", () => {

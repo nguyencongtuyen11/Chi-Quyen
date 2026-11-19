@@ -4,16 +4,64 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <meta name="theme-color" content="#e7efeb" />
-  <!-- Apply the installed app's chrome color before CSS and app startup. -->
+  <!-- Áp dụng giao diện đã lưu trước khi nạp CSS để màn mở app lên đúng màu. -->
   <script id="themeBoot">
     (function () {
-      var theme = 'light';
-      try { if (localStorage.getItem('om-theme') === 'dark') theme = 'dark'; } catch (e) {}
-      var color = theme === 'dark' ? '#0b1a18' : '#e7efeb';
-      document.documentElement.setAttribute('data-theme', theme);
-      document.documentElement.style.colorScheme = theme;
-      document.documentElement.style.backgroundColor = color;
-      document.querySelector('meta[name="theme-color"]').setAttribute('content', color);
+      const root = document.documentElement;
+      const chrome = document.querySelector('meta[name="theme-color"]');
+      const userTokens = ['--user-accent', '--user-bg', '--user-accent-ink', '--user-accent-fill'];
+
+      function normalizeAccent(value) {
+        const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(value || '').trim());
+        if (!match) return '';
+        const digits = match[1].toLowerCase();
+        return '#' + (digits.length === 3 ? [...digits].map(digit => digit + digit).join('') : digits);
+      }
+      const rgb = hex => [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16));
+      const hex = channels => '#' + channels.map(channel => channel.toString(16).padStart(2, '0')).join('');
+      const mix = (from, to, amount) => from.map((channel, i) => Math.round(channel + (to[i] - channel) * amount));
+      function luminance(channels) {
+        const linear = channels.map(channel => {
+          const value = channel / 255;
+          return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+        });
+        return linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+      }
+      function readableColor(accent, surface, target, minimum) {
+        const background = luminance(surface);
+        for (let step = 0; step < 20; step++) {
+          const candidate = mix(accent, target, step / 20);
+          const ink = luminance(candidate);
+          if ((Math.max(ink, background) + .05) / (Math.min(ink, background) + .05) >= minimum) return hex(candidate);
+        }
+        return hex(target);
+      }
+
+      function apply(theme, value) {
+        const dark = theme === 'dark';
+        const accent = normalizeAccent(value);
+        let color = dark ? '#0b1a18' : '#e7efeb';
+        if (accent) {
+          const chosen = rgb(accent);
+          color = hex(mix(rgb(dark ? '#13151d' : '#f6f7fb'), chosen, .11));
+          const ink = readableColor(chosen, rgb(dark ? '#343741' : '#dce0e8'), rgb(dark ? '#ffffff' : '#10121a'), 4.5);
+          const fill = readableColor(chosen, rgb('#ffffff'), rgb('#10121a'), 5.3);
+          [accent, color, ink, fill].forEach((token, i) => root.style.setProperty(userTokens[i], token));
+          root.dataset.accent = accent;
+        } else {
+          userTokens.forEach(token => root.style.removeProperty(token));
+          delete root.dataset.accent;
+        }
+        root.dataset.theme = dark ? 'dark' : 'light';
+        root.style.colorScheme = root.dataset.theme;
+        root.style.backgroundColor = color;
+        chrome.setAttribute('content', color);
+      }
+
+      window.AppAppearance = { apply, normalizeAccent };
+      let theme, accent;
+      try { theme = localStorage.getItem('om-theme'); accent = localStorage.getItem('om-accent'); } catch (_) {}
+      apply(theme, accent);
     })();
   </script>
   <meta name="description" content="Trung tâm Nghệ thuật OPENMUSIC — Thời khóa biểu, điểm danh, tính lương giáo viên và học phí học sinh." />
@@ -266,6 +314,29 @@
 
         <!-- ============ VIEW: CÀI ĐẶT ============ -->
         <section class="view" id="view-settings" hidden>
+          <div class="settings-card appearance-card">
+            <h3>Màu giao diện</h3>
+            <p class="appearance-note">Màu thay đổi ngay và được lưu trên trình duyệt này.</p>
+            <div class="appearance-presets" id="appearancePresets" role="group" aria-label="Màu có sẵn">
+              <button type="button" class="appearance-preset" data-accent-choice="" aria-pressed="true"><span class="appearance-default" aria-hidden="true">↺</span>Mặc định</button>
+              <button type="button" class="appearance-preset" data-accent-choice="#087f73" style="--swatch:#087f73" aria-pressed="false"><span aria-hidden="true"></span>Xanh ngọc</button>
+              <button type="button" class="appearance-preset" data-accent-choice="#2563eb" style="--swatch:#2563eb" aria-pressed="false"><span aria-hidden="true"></span>Xanh lam</button>
+              <button type="button" class="appearance-preset" data-accent-choice="#7c3aed" style="--swatch:#7c3aed" aria-pressed="false"><span aria-hidden="true"></span>Tím</button>
+              <button type="button" class="appearance-preset" data-accent-choice="#be185d" style="--swatch:#be185d" aria-pressed="false"><span aria-hidden="true"></span>Hồng</button>
+              <button type="button" class="appearance-preset" data-accent-choice="#b7791f" style="--swatch:#b7791f" aria-pressed="false"><span aria-hidden="true"></span>Vàng</button>
+            </div>
+            <form class="appearance-custom" id="appearanceCustom" novalidate>
+              <label class="appearance-picker">Màu tùy ý
+                <input type="color" id="appearancePicker" value="#087f73" />
+              </label>
+              <label class="appearance-hex">Mã HEX
+                <input type="text" id="appearanceHex" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#7C3AED" aria-describedby="appearanceError" />
+              </label>
+              <button type="submit" class="btn primary">Áp dụng mã</button>
+              <p id="appearanceError" class="appearance-error" role="status" hidden>Nhập mã màu HEX, ví dụ #7C3AED.</p>
+            </form>
+          </div>
+
           <div class="settings-card">
             <h3>⏰ Nhắc lịch học</h3>
             <p class="hint">Nhắc trước giờ học bao nhiêu phút để không bị lỡ lớp. (Mặc định 120 phút = 2 tiếng.)</p>

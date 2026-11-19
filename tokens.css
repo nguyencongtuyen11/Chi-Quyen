@@ -49,3 +49,33 @@
   --orb-b: radial-gradient(ellipse at 60% 30%, #23413a 5%, #173530 40%, transparent 80%);
   --orb-c: #102f2c; --ribbon: rgba(160,230,210,.05);
 }
+
+/* Màu cá nhân ghi đè bảng màu trung tâm; các màu báo trạng thái giữ theo bảng gốc. */
+:root[data-theme][data-accent] {
+  --bg: var(--user-bg);
+  --bg-soft: color-mix(in srgb, var(--bg) 72%, #fff);
+  --card: rgba(255,255,255,.75); --card-2: rgba(255,255,255,.56);
+  --card-solid: color-mix(in srgb, var(--bg) 26%, #fff);
+  --border: rgba(28,31,43,.13); --text: #202330; --muted: #525866; --muted-2: #626977;
+  --primary: var(--user-accent-ink);
+  --primary-d: color-mix(in srgb, var(--primary) 82%, var(--text));
+  --primary-press: color-mix(in srgb, var(--user-accent-fill) 70%, #10121a);
+  --primary-grad: linear-gradient(145deg, var(--user-accent-fill), var(--primary-press));
+  --info-bg: color-mix(in srgb, var(--user-accent) 14%, transparent);
+  --amb-1: color-mix(in srgb, var(--bg) 76%, #fff);
+  --amb-2: var(--bg);
+  --amb-3: color-mix(in srgb, var(--user-accent) 17%, var(--bg));
+  --orb-a: radial-gradient(ellipse at 40% 35%, color-mix(in srgb, var(--user-accent) 31%, var(--bg)) 0%, color-mix(in srgb, var(--user-accent) 19%, var(--bg)) 46%, transparent 74%);
+  --orb-b: radial-gradient(ellipse at 60% 30%, var(--amb-1) 0%, var(--amb-3) 48%, transparent 80%);
+  --orb-c: var(--amb-3); --ribbon: rgba(255,255,255,.28);
+}
+
+:root[data-theme="dark"][data-accent] {
+  --bg-soft: color-mix(in srgb, var(--bg) 85%, #373941);
+  --card: rgba(35,37,47,.76); --card-2: rgba(44,46,56,.64);
+  --card-solid: color-mix(in srgb, var(--bg) 68%, #252731);
+  --border: rgba(255,255,255,.12); --text: #f0f1f6; --muted: #b8becc; --muted-2: #9aa2b2;
+  --glass: rgba(30,32,42,.57);
+  --amb-1: color-mix(in srgb, var(--bg) 80%, #0b0c12);
+  --ribbon: rgba(255,255,255,.05);
+}

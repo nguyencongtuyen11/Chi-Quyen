@@ -24,3 +24,28 @@ test('theme startup survives unavailable browser storage',()=>{
  const dom=new JSDOM(html,{runScripts:'outside-only'});
  try {dom.window.eval(dom.window.document.querySelector('#themeBoot').textContent);assert.equal(dom.window.document.documentElement.dataset.theme,'light');} finally {dom.window.close();}
 });
+
+test('startup restores a personal accent before the app and ignores invalid saved colors', () => {
+  const dom = new JSDOM(html, { url: 'https://openmusic.test', runScripts: 'outside-only' });
+  try {
+    const w = dom.window;
+    const root = w.document.documentElement;
+    const boot = w.document.querySelector('#themeBoot').textContent;
+    const chrome = w.document.querySelector('meta[name="theme-color"]');
+    w.localStorage.setItem('om-theme', 'dark');
+    w.localStorage.setItem('om-accent', '#ABC');
+    w.eval(boot);
+    assert.equal(root.dataset.theme, 'dark');
+    assert.equal(root.dataset.accent, '#aabbcc');
+    assert.equal(root.style.getPropertyValue('--user-bg'), chrome.content);
+    assert.notEqual(chrome.content, '#0b1a18');
+
+    w.localStorage.setItem('om-accent', 'url(invalid)');
+    w.eval(boot);
+    assert.equal(root.dataset.accent, undefined);
+    assert.equal(root.style.getPropertyValue('--user-accent'), '');
+    assert.equal(chrome.content, '#0b1a18');
+  } finally {
+    dom.window.close();
+  }
+});

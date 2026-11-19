@@ -6,7 +6,7 @@
 //  - Request tới Supabase (khác domain, dữ liệu thật) KHÔNG bao giờ cache.
 //  Đổi số VERSION khi muốn xoá sạch cache cũ trên máy người dùng.
 // =====================================================================
-const VERSION = "om-v10-intro-timing";
+const VERSION = "om-v11-custom-colors";
 const SHELL = [
   "./",
   "index.html",

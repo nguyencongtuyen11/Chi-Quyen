@@ -321,6 +321,34 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .row-inline input { width: 120px; }
 .check-row { display: flex; align-items: center; gap: 9px; font-size: 14px; margin: 12px 0; cursor: pointer; }
 .check-row input { width: 18px; height: 18px; accent-color: var(--primary); }
+.appearance-note { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+.appearance-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.appearance-preset {
+  display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 64px; padding: 7px 4px;
+  border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--card-solid);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.appearance-preset[aria-pressed="true"] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); font-weight: 700; }
+.appearance-preset > span {
+  display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--swatch, var(--bg-soft));
+}
+.appearance-preset > .appearance-default { color: var(--text); font-size: 17px; line-height: 1; }
+.appearance-custom { display: flex; flex-wrap: wrap; align-items: end; gap: 9px 10px; margin-top: 15px; }
+.appearance-custom label { display: grid; gap: 5px; color: var(--text); font-size: 12px; font-weight: 600; }
+.appearance-picker { flex: 0 0 68px; }
+.appearance-hex { flex: 1 1 90px; min-width: 88px; max-width: 172px; }
+.appearance-custom input {
+  width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); background: var(--card-solid); font: inherit; font-size: 16px;
+}
+.appearance-custom input[type="color"] { padding: 6px; cursor: pointer; }
+.appearance-custom .btn { min-height: 44px; }
+.appearance-preset:focus-visible, .appearance-custom :is(input, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.appearance-error { flex-basis: 100%; color: var(--bad); font-size: 13px; }
+@media (min-width: 650px) {
+  .appearance-presets { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 
 /* lương theo loại lớp (modal giáo viên) — lưới 2 cột */
 .pay-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -917,6 +945,7 @@ table.tbl tfoot td { font-weight: 800; background: var(--bg-soft); }
 .day-block .dhead { align-items: flex-start; gap: 8px; padding: 10px 12px 6px; }.day-heading { flex: 1; min-width: 0; gap: 5px 8px; }.day-block .dhead .dname { font-size: clamp(12px,3.3vw,14px); font-weight: 650; white-space: nowrap; }.day-block .dhead .dadd { flex: 0 0 72px; min-width: 72px; height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 12px; align-self: flex-start; }.day-block .dbody { padding: 4px 12px 12px; }.day-block .buoi-row+.buoi-row { margin-top: 9px; }
 .ambient .treble-clef { position: absolute; display: block; left: calc(50% - 130px); top: 26%; width: 330px; height: 620px; font-family: 'Segoe UI Symbol','Apple Symbols','Noto Music',serif; font-style: normal; line-height: 1; color: rgba(22,100,79,.07); transform: rotate(-12deg); pointer-events: none; font-size: 0; background: rgba(22,100,79,.07); -webkit-mask: url("treble-clef.svg") center / contain no-repeat; mask: url("treble-clef.svg") center / contain no-repeat; }
 [data-theme="dark"] .ambient .treble-clef { color: rgba(170,230,210,.06); background: rgba(170,230,210,.06); }
+:root[data-accent] .ambient .treble-clef { background: color-mix(in srgb, var(--user-accent) 10%, transparent); }
 
 /* A vector clef stays consistent across iPhone and desktop fonts. */
 
